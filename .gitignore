@@ -1,0 +1,15 @@
+# Signing keys and build artifacts
+*.keystore
+*.jks
+*-modded.apk
+*-modded.love
+*.aligned
+*.idsig
+
+# Injector runtime output (only meaningful on-device)
+mli/dump/
+**/log.txt
+
+# Editor / OS
+.DS_Store
+*.swp
