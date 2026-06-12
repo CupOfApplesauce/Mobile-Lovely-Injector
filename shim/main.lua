@@ -16,7 +16,14 @@ local ok, err = pcall(function()
 end)
 
 if not ok then
-  print("[MLI] fatal injector error, launching game unmodified: " .. tostring(err))
+  local msg = "[MLI] fatal injector error, launching game unmodified: " .. tostring(err)
+  print(msg)
+  -- Also persist the error so users without logcat access can read it.
+  pcall(function()
+    love.filesystem.createDirectory("mli")
+    love.filesystem.append("mli/boot_error.txt",
+      os.date("%Y-%m-%d %H:%M:%S") .. " " .. msg .. "\n")
+  end)
   -- Fall back to the untouched original main.lua so the game still starts.
   local chunk = love.filesystem.load("mli/main_original.lua")
   if chunk then chunk() end
