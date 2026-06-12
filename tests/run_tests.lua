@@ -336,6 +336,13 @@ do
   local plain = love.filesystem.load("mli/main_original.lua")
   check("unpatched file still loadable", type(plain) == "function")
 
+  -- Balatro requires modules with slash-style names ('engine/object'); the
+  -- searcher must resolve and patch those too.
+  FS["engine/object.lua"] = "ENGINE_OBJECT_LOADED = true\nreturn true\n"
+  FS["Mods/TestMod/lovely2.toml"] = nil -- (no extra patches)
+  local okreq = pcall(require, "engine/object")
+  check("slash-style require resolves via searcher", okreq and ENGINE_OBJECT_LOADED == true)
+
   -- run() loads original main, applies main.lua patch (copy append), executes
   injector.run()
   check("main body executed", SPEEDFACTOR_HOLDER == "main ran")

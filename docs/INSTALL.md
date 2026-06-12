@@ -31,12 +31,28 @@ What happens:
 - It strips the old signature and, if `zipalign`/`apksigner` are on your PATH,
   aligns and signs the result with an auto-generated debug key.
 
+- It patches `conf.lua` to set `t.externalstorage = true`, so the save
+  directory (and your `Mods/` folder) is on shared storage you can actually
+  reach. See "Finding the save directory" below.
+
 Useful flags:
 - `--inspect` — print the APK's structure and the detected game root, then exit.
 - `--no-sign` — repackage only; you sign it yourself afterwards.
+- `--no-external-storage` — don't touch `conf.lua` (Mods/ will likely be
+  unreachable without root).
 - `--keystore / --alias / --storepass` — use your own signing key.
 - `--love` — operate on a `.love` file instead of an APK (handy for testing the
   transform; no signing).
+
+### Alternative: APKToolM round-trip (no PC Android tooling needed)
+
+If you already use **APKToolM** (or apktool) to unpack your APK, you can patch
+just the inner game archive and let your usual tool handle repack + sign:
+
+1. Unpack the APK and pull out the `game.love` (often under `assets/`).
+2. `python3 tools/install.py --love game.love -o game-modded.love`
+3. Rename `game-modded.love` back, put it where the original was, then repack
+   and sign with APKToolM as you normally do.
 
 ## 2. Sign it (if the tool couldn't)
 
@@ -70,21 +86,26 @@ Mods live in a `Mods/` folder inside the game's **save directory**.
 ### Finding the save directory
 
 The save directory is where the game keeps `settings.jkr` and your save files.
-With balatro-mobile-maker's external-storage option it is typically:
+Balatro's `conf.lua` sets no LÖVE identity, so on Android it defaults to
+`game`, making the path:
 
 ```
-/sdcard/Android/data/<package-name>/files/save/<identity>/
+/sdcard/Android/data/<package-name>/files/save/game/
 ```
 
-where `<package-name>` is often `com.unofficial.balatro` and `<identity>` is the
-LÖVE identity the build uses (commonly `Balatro` or `game`). The reliable way to
-find it: launch the modded game once, then look for the log file MLI writes:
+where `<package-name>` is often `com.unofficial.balatro`.
 
-```
-.../files/save/<identity>/mli/log.txt
-```
+This path is on *shared* storage only because the installer patches `conf.lua`
+to set `t.externalstorage = true` (mobile-maker doesn't always enable this).
+Without it the save directory sits in internal app storage
+(`/data/data/...`), which you can't reach without root — if you need that
+behavior anyway, pass `--no-external-storage`. Note that enabling external
+storage moves the save location, so do it before you've accumulated progress
+you care about (or copy your save across).
 
-The folder that contains `mli/log.txt` is the save directory.
+To confirm the path: launch the modded game once, then look for the log file
+MLI writes at `.../files/save/game/mli/log.txt`. The folder containing
+`mli/log.txt` is the save directory.
 
 ### Installing a mod
 

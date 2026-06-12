@@ -23,6 +23,7 @@ tells you how to sign it yourself.
 import argparse
 import io
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -91,7 +92,37 @@ def collect_mli_payload():
     return shim, payload
 
 
-def transform_game(entries, root_prefix):
+def patch_conf_externalstorage(entries):
+    """Enable t.externalstorage in conf.lua so the save directory (and thus
+    Mods/) lives on shared storage the user can reach without root. No-op if
+    conf.lua is missing or already sets it."""
+    if "conf.lua" not in entries:
+        log("no conf.lua found; cannot enable external storage "
+            "(Mods/ may be unreachable without root)")
+        return
+    text = entries["conf.lua"].decode("utf-8", errors="replace")
+    if "externalstorage" in text:
+        log("conf.lua already sets externalstorage; leaving as-is")
+        return
+    m = re.search(r"function\s+love\.conf\s*\(\s*(\w+)\s*\)", text)
+    if not m:
+        log("warning: could not find love.conf() in conf.lua; "
+            "external storage NOT enabled")
+        return
+    var = m.group(1)
+    eol = "\r\n" if "\r\n" in text else "\n"
+    insert = (f"{eol}\t{var}.externalstorage = true "
+              f"-- [MLI] put save dir (and Mods/) on shared storage{eol}")
+    pos = m.end()
+    # skip to end of the signature line
+    nl = text.find("\n", pos)
+    pos = len(text) if nl == -1 else nl + 1
+    text = text[:pos] + insert.lstrip("\r\n") + text[pos:]
+    entries["conf.lua"] = text.encode("utf-8")
+    log(f"enabled {var}.externalstorage = true in conf.lua")
+
+
+def transform_game(entries, root_prefix, external_storage=True):
     """entries: dict {name: bytes} of the game source (already stripped of the
     root_prefix, i.e. keys are game-relative like 'main.lua', 'game.lua').
     Mutates and returns the dict with the injector installed."""
@@ -111,6 +142,9 @@ def transform_game(entries, root_prefix):
     for path, data in payload.items():
         entries[path] = data
 
+    if external_storage:
+        patch_conf_externalstorage(entries)
+
     log(f"moved main.lua -> mli/main_original.lua")
     log(f"installed shim main.lua + {len(payload)} runtime file(s)")
     return entries
@@ -126,7 +160,7 @@ def is_signature_entry(name):
              or up.endswith(".SF") or up == "META-INF/MANIFEST.MF"))
 
 
-def repackage(in_apk, out_apk):
+def repackage(in_apk, out_apk, external_storage=True):
     with zipfile.ZipFile(in_apk, "r") as zin:
         names = zin.namelist()
         nested = find_nested_love(names)
@@ -134,7 +168,7 @@ def repackage(in_apk, out_apk):
         if nested:
             log(f"game is a nested archive: {nested}")
             love_bytes = zin.read(nested)
-            new_love = transform_love_archive(love_bytes)
+            new_love = transform_love_archive(love_bytes, external_storage)
             _write_apk(zin, out_apk, replace={nested: new_love}, add={})
         else:
             root = find_game_root(names)
@@ -148,7 +182,7 @@ def repackage(in_apk, out_apk):
             for n in names:
                 if n.startswith(root) and not n.endswith("/"):
                     game[n[len(root):]] = zin.read(n)
-            game = transform_game(game, root)
+            game = transform_game(game, root, external_storage)
             # Map back to full names; figure out which to replace/add.
             replace, add = {}, {}
             existing = set(names)
@@ -162,7 +196,7 @@ def repackage(in_apk, out_apk):
     log(f"wrote repackaged APK: {out_apk}")
 
 
-def transform_love_archive(love_bytes):
+def transform_love_archive(love_bytes, external_storage=True):
     """Transform a nested .love zip's bytes and return new zip bytes."""
     with zipfile.ZipFile(io.BytesIO(love_bytes), "r") as z:
         names = z.namelist()
@@ -173,7 +207,7 @@ def transform_love_archive(love_bytes):
         for n in names:
             if n.startswith(root) and not n.endswith("/"):
                 game[n[len(root):]] = z.read(n)
-        game = transform_game(game, root)
+        game = transform_game(game, root, external_storage)
         # Preserve any non-game entries verbatim (unlikely but safe).
         passthrough = {n: z.read(n) for n in names
                        if not n.startswith(root) and not n.endswith("/")}
@@ -298,6 +332,8 @@ def main():
     ap.add_argument("--love", action="store_true", help="treat input/output as a .love archive (no signing)")
     ap.add_argument("--inspect", action="store_true", help="print APK structure and exit")
     ap.add_argument("--no-sign", action="store_true", help="repackage only, do not sign")
+    ap.add_argument("--no-external-storage", action="store_true",
+                    help="do not patch conf.lua to enable t.externalstorage")
     ap.add_argument("--keystore", default=os.path.join(HERE, "mli-debug.keystore"))
     ap.add_argument("--alias", default="mli")
     ap.add_argument("--storepass", default="mli-debug")
@@ -311,14 +347,14 @@ def main():
         out = args.output or (os.path.splitext(args.input)[0] + "-modded.love")
         with open(args.input, "rb") as f:
             data = f.read()
-        new = transform_love_archive(data)
+        new = transform_love_archive(data, not args.no_external_storage)
         with open(out, "wb") as f:
             f.write(new)
         log(f"wrote {out}")
         return
 
     out = args.output or (os.path.splitext(args.input)[0] + "-modded.apk")
-    repackage(args.input, out)
+    repackage(args.input, out, not args.no_external_storage)
 
     if args.no_sign:
         log("skipping signing (--no-sign). APK will not install until signed.")
