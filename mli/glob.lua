@@ -1,9 +1,12 @@
 -- Mobile Lovely Injector: lovely "pattern" wildcard matching.
 --
--- Lovely pattern patches match a literal string against a source line, where
--- `*` matches any run of characters and `?` matches a single character (glob
--- semantics, not regex). This converts such a pattern into a Lua pattern and
--- exposes a substring search over a single line.
+-- Lovely pattern patches match a wildcard pattern against the *entire trimmed
+-- line* (`*` matches any run of characters, `?` matches a single character).
+-- This mirrors lovely-core's pattern.rs, which trims each source line and
+-- requires WildMatch to match it fully — substring hits do NOT count.
+-- Patterns may span multiple lines; each pattern line must match the
+-- corresponding source line (the engine handles the windowing; here we match
+-- one line against one pattern line).
 
 local glob = {}
 
@@ -15,14 +18,20 @@ local function escape_literal(s)
   return (s:gsub("([" .. LUA_MAGIC:gsub("(.)", "%%%1") .. "])", "%%%1"))
 end
 
--- Convert a lovely glob pattern to a Lua pattern string.
+local function trim(s)
+  return (s:gsub("^%s+", ""):gsub("%s+$", ""))
+end
+glob.trim = trim
+
+-- Convert a lovely glob pattern to an anchored Lua pattern string that must
+-- match a whole (trimmed) line.
 function glob.to_lua_pattern(pattern)
-  local out = {}
+  local out = { "^" }
   local i, n = 1, #pattern
   while i <= n do
     local c = pattern:sub(i, i)
     if c == "*" then
-      out[#out + 1] = ".-"      -- non-greedy: closest match wins
+      out[#out + 1] = ".-"
     elseif c == "?" then
       out[#out + 1] = "."
     else
@@ -30,16 +39,18 @@ function glob.to_lua_pattern(pattern)
     end
     i = i + 1
   end
+  out[#out + 1] = "$"
   return table.concat(out)
 end
 
--- Returns true if `line` contains a match for the lovely `pattern`.
--- Plain patterns (no wildcards) use a fast literal search.
+-- Returns true if the trimmed `line` fully matches the (already trimmed)
+-- lovely `pattern`. Plain patterns (no wildcards) use direct equality.
 function glob.line_matches(line, pattern)
+  local t = trim(line)
   if not pattern:find("[%*%?]") then
-    return line:find(pattern, 1, true) ~= nil
+    return t == pattern
   end
-  return line:find(glob.to_lua_pattern(pattern)) ~= nil
+  return t:find(glob.to_lua_pattern(pattern)) ~= nil
 end
 
 return glob

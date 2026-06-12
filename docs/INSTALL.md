@@ -112,6 +112,21 @@ into `Mods/`. Mods that depend on SMODS go in `Mods/` next to it. See
 [WRITING_MODS.md](WRITING_MODS.md) for the patch format and current caveats
 (notably regex patches).
 
+## 5. (Recommended) Dry-run your mods on the PC first
+
+Extract the game source from the APK/`.love` (any unzip tool), then:
+
+```sh
+lua tools/smoke_test.lua path/to/extracted-game path/to/Mods
+```
+
+For every mod patch it reports whether it applied, flags pattern/regex patches
+that matched **zero** times (usually a game-version mismatch or an anchor that
+mobile-maker modified), and verifies every patched file still compiles. Fix
+failures before pushing mods to the device — it turns "black screen on my
+phone" into a readable error on your PC. Requires a Lua 5.1 interpreter
+(`lua5.1` or LuaJIT).
+
 ## Troubleshooting
 
 - **Game won't install:** it's unsigned or signed with a different key than the

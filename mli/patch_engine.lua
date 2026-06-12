@@ -55,32 +55,61 @@ end
 
 -- ---- pattern patches -----------------------------------------------------
 -- target/pattern/position(before|after|at)/payload/match_indent/times
+--
+-- Mirrors lovely-core's pattern.rs: the pattern may span multiple lines; each
+-- pattern line is trimmed and must FULLY match the corresponding trimmed
+-- source line (sliding window). Substring hits do not count.
 local function apply_pattern(lines, patch, vars)
-  local pattern = patch.pattern
   local position = patch.position or "after"
   local payload = interpolate_vars(patch.payload or "", vars)
   local match_indent = patch.match_indent
   local limit = patch.times -- nil = unlimited
   local applied = 0
 
+  -- Split the pattern into trimmed lines (usually just one). Like Rust's
+  -- str::lines(), a trailing newline does not produce a final empty line.
+  local raw_pat_lines = split_lines(patch.pattern or "")
+  if #raw_pat_lines > 0 and raw_pat_lines[#raw_pat_lines] == "" then
+    table.remove(raw_pat_lines)
+  end
+  local pat_lines = {}
+  for _, pl in ipairs(raw_pat_lines) do
+    pat_lines[#pat_lines + 1] = glob.trim(pl)
+  end
+  local plen = #pat_lines
+  if plen == 0 then return lines, 0 end
+
+  local function window_matches(at)
+    for k = 1, plen do
+      local src = lines[at + k - 1]
+      if src == nil or not glob.line_matches(src, pat_lines[k]) then
+        return false
+      end
+    end
+    return true
+  end
+
   local out = {}
-  for _, line in ipairs(lines) do
-    local hit = (limit == nil or applied < limit) and glob.line_matches(line, pattern)
+  local i, n = 1, #lines
+  while i <= n do
+    local hit = (limit == nil or applied < limit) and window_matches(i)
     if hit then
       applied = applied + 1
-      local indent = match_indent and leading_indent(line) or ""
+      local indent = match_indent and leading_indent(lines[i]) or ""
       local block = format_payload(payload, indent, nil)
       if position == "before" then
         out[#out + 1] = block
-        out[#out + 1] = line
+        for k = 0, plen - 1 do out[#out + 1] = lines[i + k] end
       elseif position == "at" then
-        out[#out + 1] = block            -- replace the matched line
+        out[#out + 1] = block            -- replace the matched window
       else -- "after"
-        out[#out + 1] = line
+        for k = 0, plen - 1 do out[#out + 1] = lines[i + k] end
         out[#out + 1] = block
       end
+      i = i + plen                       -- windows do not overlap
     else
-      out[#out + 1] = line
+      out[#out + 1] = lines[i]
+      i = i + 1
     end
   end
   return out, applied

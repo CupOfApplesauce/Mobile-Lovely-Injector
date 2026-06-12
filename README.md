@@ -42,6 +42,13 @@ adb install -r Balatro-modded.apk
 #    e.g. /sdcard/Android/data/<package>/files/save/<identity>/Mods/MyMod/
 ```
 
+Before touching the device, you can dry-run your mods against the extracted
+game source on your PC — it applies every patch and compile-checks the results:
+
+```sh
+lua tools/smoke_test.lua path/to/extracted-game-src path/to/Mods
+```
+
 Full instructions, including how to find the save directory and how to sign the
 APK if you don't have build-tools, are in [docs/INSTALL.md](docs/INSTALL.md).
 

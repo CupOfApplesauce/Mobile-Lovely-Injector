@@ -144,11 +144,16 @@ end
 -- ---------------------------------------------------------------------------
 -- glob
 -- ---------------------------------------------------------------------------
-section("glob wildcard matching")
+section("glob wildcard matching (full trimmed-line semantics)")
 local glob = require("mli.glob")
-check("literal match", glob.line_matches("  self.SPEEDFACTOR = 1", "self.SPEEDFACTOR = 1"))
+check("literal match ignores indentation", glob.line_matches("  self.SPEEDFACTOR = 1", "self.SPEEDFACTOR = 1"))
+check("literal match ignores trailing CR", glob.line_matches("self.SPEEDFACTOR = 1\r", "self.SPEEDFACTOR = 1"))
 check("no false match", not glob.line_matches("self.OTHER = 1", "self.SPEEDFACTOR = 1"))
-check("star wildcard", glob.line_matches("local x = foo(123)", "foo(*)"))
+check("substring is NOT a match (lovely full-line)", not glob.line_matches("return foo", "return"))
+check("superstring is NOT a match", not glob.line_matches("self.SPEEDFACTOR = 1 + x", "self.SPEEDFACTOR = 1"))
+check("star wildcard full line", glob.line_matches("local x = foo(123)", "local x = foo(*)"))
+check("star allows empty run", glob.line_matches("foo()", "foo(*)"))
+check("leading star", glob.line_matches("local x = foo(123)", "*foo(123)"))
 check("question wildcard", glob.line_matches("abc", "a?c"))
 check("dot is literal not wildcard", not glob.line_matches("aXc", "a.c"))
 
@@ -197,6 +202,48 @@ do
     { kind = "copy", position = "prepend", payload = "TOP" },
   }, {})
   check("copy prepend", out:find("^TOP") ~= nil, out)
+end
+do
+  -- multi-line pattern (lovely sliding window)
+  local src = "if a then\n    do_thing()\nend\nother()\n"
+  local out = engine.apply("x.lua", src, {
+    { kind = "pattern", pattern = "if a then\ndo_thing()", position = "before",
+      payload = "WINDOW_HIT" },
+  }, {})
+  check("multiline pattern matches window", out:find("WINDOW_HIT\nif a then") ~= nil, out)
+  local out2 = engine.apply("x.lua", src, {
+    { kind = "pattern", pattern = "if a then\nnope()", position = "before",
+      payload = "WINDOW_HIT" },
+  }, {})
+  check("multiline pattern needs all lines", out2:find("WINDOW_HIT") == nil)
+end
+do
+  -- a pattern with a trailing newline must not require an empty source line
+  local src = "alpha\nbeta\n"
+  local out = engine.apply("x.lua", src, {
+    { kind = "pattern", pattern = "alpha\n", position = "after", payload = "MID" },
+  }, {})
+  check("trailing newline in pattern ignored", out:find("alpha\nMID\nbeta") ~= nil, out)
+end
+do
+  -- CRLF source: anchors still match and insertion lands after the CR line
+  local src = "function f()\r\n    self.SPEEDFACTOR = 1\r\nend\r\n"
+  local out = engine.apply("game.lua", src, {
+    { kind = "pattern", pattern = "self.SPEEDFACTOR = 1", position = "after",
+      match_indent = true, payload = "CRLF_OK()" },
+  }, {})
+  check("CRLF line matched", out:find("CRLF_OK%(%)") ~= nil, out)
+  local chunk = loadstring(out)
+  check("CRLF patched source compiles", chunk ~= nil)
+end
+do
+  -- times cap
+  local src = "x = 1\nx = 1\nx = 1\n"
+  local out = engine.apply("x.lua", src, {
+    { kind = "pattern", pattern = "x = 1", position = "after", payload = "Y", times = 2 },
+  }, {})
+  local _, count = out:gsub("Y", "")
+  check("times caps matches", count == 2, count)
 end
 do
   -- regex translation sanity
