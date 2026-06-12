@@ -91,6 +91,25 @@ Variables (`[vars]`) are interpolated into payloads as `{{lovely:name}}`.
 Patches are applied in ascending manifest `priority`, then discovery order —
 the same ordering Lovely uses.
 
+## Interaction with balatro-mobile-maker's own patches
+
+mobile-maker modifies a small, known set of files when converting the PC game:
+`main.lua`, `globals.lua`, `functions/button_callbacks.lua`, and a shader. It
+does **not** touch `game.lua` (verified against a real converted APK), so the
+heavily-patched SMODS anchors there are intact.
+
+Two consequences:
+
+- Mod patches targeting `globals.lua`, `functions/button_callbacks.lua`, or
+  `main.lua` *may* miss if their anchor line is one mobile-maker edited.
+  `tools/smoke_test.lua` reports zero-match patches per patch, so this is
+  detectable on a PC before installing anything.
+- The old dump-based workaround copies PC-patched files over the mobile files,
+  clobbering mobile-maker's touch/storage fixes — which is why that workflow
+  needs a separate "mobile compat mod" to re-apply them. MLI patches the
+  APK's already-mobile-fixed sources at runtime, so mobile-maker's changes are
+  preserved automatically and no compat mod is needed.
+
 ## Known limitations
 
 - **Regex patches are best-effort.** Lua has no PCRE. `patch_engine.regex_to_lua`
