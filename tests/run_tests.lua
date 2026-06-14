@@ -383,25 +383,26 @@ section("external mod bundle loader")
 do
   local external = require("mli.external")
   check("mount point is Mods", external.MOUNT_POINT == "Mods")
-  check("zip candidates include Download", (function()
+  check("folder candidates prefer Download/Mods", external.FOLDER_CANDIDATES[1] == "/storage/emulated/0/Download/Mods")
+  check("zip candidates include Download/Mods.zip", (function()
     for _, p in ipairs(external.ZIP_CANDIDATES) do
-      if p:find("/Download/BalatroMods%.zip$") then return true end
+      if p == "/storage/emulated/0/Download/Mods.zip" then return true end
     end
     return false
   end)())
-  check("folder candidates include Download", (function()
+  -- back-compat: BalatroMods names still accepted
+  check("folder candidates still include BalatroMods", (function()
     for _, p in ipairs(external.FOLDER_CANDIDATES) do
-      if p:find("/Download/BalatroMods$") then return true end
+      if p:find("/BalatroMods$") then return true end
     end
     return false
   end)())
-  -- read_binary returns nil for a missing file (no crash)
   check("read_binary handles missing file", external._read_binary("/no/such/file/xyz") == nil)
-  -- mount with no love.filesystem reports gracefully
+  -- resolve with no love.filesystem reports gracefully
   local saved = _G.love
   _G.love = nil
-  local r = external.mount()
-  check("mount without love is graceful", r.mounted == false and r.err ~= nil)
+  local r = external.resolve()
+  check("resolve without love is graceful", r.mode == "none" and r.err ~= nil)
   _G.love = saved
 end
 

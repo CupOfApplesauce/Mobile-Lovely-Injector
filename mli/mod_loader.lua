@@ -72,11 +72,13 @@ local function collect_from_doc(doc, mod_dir, fs, priority, out)
       out.targeted[#out.targeted + 1] = p
     elseif entry.module then
       local m = entry.module
+      local rel = m.source
       out.modules[#out.modules + 1] = {
         name = m.name,
-        source = mod_dir .. "/" .. m.source,
+        source = mod_dir .. "/" .. rel,
         before = normalize_target(m.before),
         priority = priority,
+        read = function() return read_source(rel) end, -- bound to this mod's fs
       }
     end
   end

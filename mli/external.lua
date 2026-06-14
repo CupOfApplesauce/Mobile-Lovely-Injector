@@ -1,22 +1,24 @@
 -- Mobile Lovely Injector: external (public-folder) mod loading.
 --
 -- The LÖVE save directory lives under /sdcard/Android/data/<pkg>/... which, on
--- locked-down devices, no file manager can write to. But the app CAN read
--- public folders like Download/ and Documents/ via io.* (verified on device).
+-- locked-down devices, no file manager can write to. With All-files-access
+-- granted, the app CAN read public folders like Download/. This module makes
+-- the user's mods (in a public folder) usable by the mod loader, preferring a
+-- real folder so mods can be organized in one place without re-zipping:
 --
--- This module makes the user's mods (placed in a public folder) visible to the
--- normal love.filesystem-based mod loader by MOUNTING them at the virtual path
--- "Mods". Two strategies, tried in order:
+--   1. FOLDER via FFI (mli.osfs): list/read a real directory such as
+--      Download/Mods/ directly. Works on any LÖVE because Balatro is LuaJIT.
+--      Returned as a dedicated fs adapter + absolute mod root.
+--   2. FOLDER via love.filesystem.mountFullPath (LÖVE 12+): mounts the folder
+--      at the virtual "Mods" path.
+--   3. ZIP: a single Download/Mods.zip (or BalatroMods.zip) read with io.open
+--      and mounted from memory (LÖVE 11+).
 --
---   1. Folder mount via love.filesystem.mountFullPath (LÖVE 12+): mounts a real
---      directory (e.g. Download/BalatroMods) directly. Best UX -- drop mod
---      folders straight in.
---   2. Zip-from-memory via io.open + love.filesystem.newFileData + .mount
---      (LÖVE 11+): the user drops a single BalatroMods.zip; we read its bytes
---      and mount the archive. Works on older LÖVE where mountFullPath is absent.
---
--- After a successful mount, love.filesystem.getDirectoryItems("Mods") lists the
--- mods, so the existing mod_loader works unchanged.
+-- resolve() returns a table describing what to use:
+--   { mode = "folder"|"zip"|"none", source, method,
+--     mod_fs = <adapter>|nil,   -- nil means "use love.filesystem"
+--     mod_roots = { ... }|nil,
+--     err, tried = { ... } }
 
 local log = require("mli.log")
 
@@ -24,17 +26,22 @@ local M = {}
 
 M.MOUNT_POINT = "Mods"
 
--- Public folders to look in. The base name "BalatroMods" is used for both a
--- folder and a <name>.zip.
+-- Real-folder candidates (absolute). "Mods" first per user preference, then the
+-- older "BalatroMods" name for back-compat, under Download then Documents.
 M.FOLDER_CANDIDATES = {
+  "/storage/emulated/0/Download/Mods",
   "/storage/emulated/0/Download/BalatroMods",
+  "/storage/emulated/0/Documents/Mods",
   "/storage/emulated/0/Documents/BalatroMods",
-  "/sdcard/Download/BalatroMods",
+  "/sdcard/Download/Mods",
 }
+
 M.ZIP_CANDIDATES = {
+  "/storage/emulated/0/Download/Mods.zip",
   "/storage/emulated/0/Download/BalatroMods.zip",
+  "/storage/emulated/0/Documents/Mods.zip",
   "/storage/emulated/0/Documents/BalatroMods.zip",
-  "/sdcard/Download/BalatroMods.zip",
+  "/sdcard/Download/Mods.zip",
 }
 
 local function read_binary(path)
@@ -46,54 +53,43 @@ local function read_binary(path)
 end
 M._read_binary = read_binary
 
--- Diagnostic: report, per candidate, whether the app can actually io.open it,
--- distinguishing "No such file" (wrong path/name) from "Permission denied"
--- (scoped-storage: can't read another app's file). Also reports whether
--- mountFullPath (LÖVE 12 folder mount) is available. Returns a list of strings.
-function M.read_probe()
-  local out = {}
-  local mfp = (love and love.filesystem and love.filesystem.mountFullPath) and true or false
-  out[#out + 1] = "mountFullPath (LOVE12+): " .. (mfp and "yes" or "no")
-  local all = {}
-  for _, p in ipairs(M.FOLDER_CANDIDATES) do all[#all + 1] = p .. "/HelloMod/lovely.toml" end
-  for _, p in ipairs(M.ZIP_CANDIDATES) do all[#all + 1] = p end
-  for _, p in ipairs(all) do
-    local f, err = io.open(p, "rb")
-    if f then
-      f:close()
-      out[#out + 1] = "[READ OK] " .. p
-    else
-      out[#out + 1] = "[no]      " .. p .. "  (" .. tostring(err) .. ")"
+-- Try strategy 1: a real folder via FFI.
+local function try_folder_ffi(result)
+  local ok, osfs = pcall(require, "mli.osfs")
+  if not ok or not osfs.available() then return nil end
+  local fs = osfs.adapter()
+  for _, dir in ipairs(M.FOLDER_CANDIDATES) do
+    result.tried[#result.tried + 1] = dir
+    if fs.is_dir(dir) and #fs.list(dir) > 0 then
+      result.mode, result.source, result.method = "folder", dir, "ffi"
+      result.mod_fs, result.mod_roots = fs, { dir }
+      log.info("using external mods folder (ffi): %s", dir)
+      return true
     end
   end
-  return out
+  return nil
 end
 
--- Attempt to mount external mods. Returns a result table:
---   { mounted = bool, source = string|nil, method = "folder"|"zip"|nil,
---     err = string|nil, tried = { ... } }
-function M.mount()
+-- Try strategy 2: a real folder via love.filesystem.mountFullPath (LÖVE 12+).
+local function try_folder_mountfullpath(result)
   local lf = love and love.filesystem
-  local result = { mounted = false, tried = {} }
-  if not lf then
-    result.err = "love.filesystem unavailable"
-    return result
-  end
-
-  -- Strategy 1: real folder mount (LÖVE 12+).
-  if lf.mountFullPath then
-    for _, dir in ipairs(M.FOLDER_CANDIDATES) do
-      result.tried[#result.tried + 1] = dir
-      local ok, mounted = pcall(lf.mountFullPath, dir, M.MOUNT_POINT, "read")
-      if ok and mounted then
-        result.mounted, result.source, result.method = true, dir, "folder"
-        log.info("mounted external mods folder: %s", dir)
-        return result
-      end
+  if not (lf and lf.mountFullPath) then return nil end
+  for _, dir in ipairs(M.FOLDER_CANDIDATES) do
+    local ok, mounted = pcall(lf.mountFullPath, dir, M.MOUNT_POINT, "read")
+    if ok and mounted then
+      result.mode, result.source, result.method = "folder", dir, "mountFullPath"
+      result.mod_roots = { M.MOUNT_POINT } -- mod_fs nil => use love.filesystem
+      log.info("mounted external mods folder (mountFullPath): %s", dir)
+      return true
     end
   end
+  return nil
+end
 
-  -- Strategy 2: zip from memory (LÖVE 11+).
+-- Try strategy 3: a zip mounted from memory (LÖVE 11+).
+local function try_zip(result)
+  local lf = love and love.filesystem
+  if not lf then return nil end
   for _, zip in ipairs(M.ZIP_CANDIDATES) do
     result.tried[#result.tried + 1] = zip
     local bytes = read_binary(zip)
@@ -101,24 +97,63 @@ function M.mount()
       local ok_fd, fd = pcall(lf.newFileData, bytes, "balatromods.zip")
       if not (ok_fd and fd) then
         result.err = "newFileData failed for " .. zip .. ": " .. tostring(fd)
-        return result
+        return nil
       end
       local ok_m, mounted = pcall(lf.mount, fd, M.MOUNT_POINT)
       if ok_m and mounted then
-        -- Keep a reference so the FileData isn't garbage-collected while mounted.
-        M._mounted_data = fd
-        result.mounted, result.source, result.method = true, zip, "zip"
+        M._mounted_data = fd -- keep alive while mounted
+        result.mode, result.source, result.method = "zip", zip, "zip"
+        result.mod_roots = { M.MOUNT_POINT } -- mod_fs nil => use love.filesystem
         log.info("mounted external mods zip: %s", zip)
-        return result
+        return true
       else
         result.err = "mount failed for " .. zip .. ": " .. tostring(mounted)
-        return result
+        return nil
       end
     end
   end
+  return nil
+end
 
-  result.err = "no BalatroMods folder or BalatroMods.zip found in Download/Documents"
+-- Resolve where mods come from. See header for the returned shape.
+function M.resolve()
+  local result = { mode = "none", tried = {} }
+  if not (love and love.filesystem) then
+    result.err = "love.filesystem unavailable"
+    return result
+  end
+  if try_folder_ffi(result) then return result end
+  if try_folder_mountfullpath(result) then return result end
+  if try_zip(result) then return result end
+  result.err = result.err or
+    "no Mods folder or Mods.zip found in Download/Documents"
   return result
+end
+
+-- Diagnostic: report what's readable and why, distinguishing 'No such file'
+-- (wrong path/name) from 'Permission denied' (scoped storage). Returns strings.
+function M.read_probe()
+  local out = {}
+  local ok_osfs, osfs = pcall(require, "mli.osfs")
+  out[#out + 1] = "FFI dir listing: " .. ((ok_osfs and osfs.available()) and "yes" or "no")
+  local mfp = (love and love.filesystem and love.filesystem.mountFullPath) and true or false
+  out[#out + 1] = "mountFullPath (LOVE12+): " .. (mfp and "yes" or "no")
+  -- folders
+  if ok_osfs and osfs.available() then
+    local fs = osfs.adapter()
+    for _, dir in ipairs(M.FOLDER_CANDIDATES) do
+      if fs.is_dir(dir) then
+        out[#out + 1] = "[DIR " .. #fs.list(dir) .. "] " .. dir
+      end
+    end
+  end
+  -- zips
+  for _, p in ipairs(M.ZIP_CANDIDATES) do
+    local f, err = io.open(p, "rb")
+    if f then f:close(); out[#out + 1] = "[READ OK] " .. p
+    else out[#out + 1] = "[no] " .. p .. "  (" .. tostring(err) .. ")" end
+  end
+  return out
 end
 
 return M

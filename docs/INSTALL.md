@@ -116,6 +116,21 @@ file manager) via a normal file path. The injector hits exactly this — the
 status popup will show your `BalatroMods.zip` as `Permission denied` (the file
 exists, it just can't be read).
 
+Once **All-files-access** (below) is granted, MLI reads mods straight from a
+real folder — no zipping. The preferred layout is a single organized folder:
+
+```
+/storage/emulated/0/Download/Mods/
+├── Steamodded/
+├── HelloMod/
+└── (more mods...)
+```
+
+It also accepts `Download/Mods.zip`, and the older `BalatroMods` names, and it
+checks `Documents/` too. The folder is read via LuaJIT FFI (Balatro is always
+LuaJIT), so it works regardless of LÖVE version. Add or remove mod folders and
+relaunch — that's it.
+
 The fix is the **All-files-access** permission. Two one-time steps:
 
 **1. Add the permission to the APK manifest.** This needs a tool that decodes
@@ -151,21 +166,23 @@ in order:
 and also checks `Documents/`. Whatever it finds is mounted as the `Mods/`
 folder, so everything below about mod layout still applies.
 
-**Recommended (works everywhere): the zip.**
-Put your mods inside a zip whose **root contains the mod folders directly**:
+**Recommended: a real folder.** Create `Download/Mods/` and drop each mod's
+folder inside it (`Download/Mods/Steamodded/`, `Download/Mods/HelloMod/`, ...).
+Add or remove mods by editing that folder — no rezipping. The launch popup
+tells you which source was loaded and how many mods it found.
+
+**Alternative: a zip.** If you prefer a single file, put your mod folders at the
+**root** of `Download/Mods.zip` (or `BalatroMods.zip`):
 
 ```
-BalatroMods.zip
+Mods.zip
 ├── HelloMod/
 │   └── lovely.toml
 └── Steamodded/
     └── ...
 ```
 
-Place it at `/storage/emulated/0/Download/BalatroMods.zip` (i.e. your
-**Downloads** folder). To add/update mods, rebuild the zip and replace it — any
-file manager or the built-in Files app can do this without root or a PC. The
-launch popup tells you which source was loaded and how many mods it found.
+To update, replace the zip. The folder is tried first; the zip is the fallback.
 
 ### Installing a mod (save-directory method)
 

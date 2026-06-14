@@ -155,7 +155,9 @@ local function register_modules(modules)
     if not m.name or not m.source then
       log.warn("skipping malformed module patch")
     else
-      local src = state.fs.read(m.source)
+      -- Read via the mod's own fs (external folder uses an FFI adapter); fall
+      -- back to the game/love filesystem.
+      local src = (m.read and m.read()) or state.fs.read(m.source)
       if not src then
         log.warn("module patch '%s': source not found at %s", m.name, m.source)
       else
@@ -190,23 +192,28 @@ function injector.init(opts)
 
   log.info("Mobile Lovely Injector v%s starting", injector.VERSION)
 
-  -- Make external (public-folder) mods visible at the virtual "Mods" path
-  -- before scanning. Skipped in test mode (when a custom fs adapter is given).
-  injector.mount_info = { mounted = false }
+  -- Decide where mods come from. By default the love.filesystem save-dir
+  -- "Mods". On device we prefer a public folder (Download/Mods) the user can
+  -- actually reach. Skipped in test mode (when a custom fs adapter is given).
+  local mod_fs = state.fs
+  local mod_roots = opts.mod_roots or injector.DEFAULT_MOD_ROOTS
+  injector.mount_info = { mode = "none" }
   if love and love.filesystem and not opts.fs and opts.mount_external ~= false then
     local ok, external = pcall(require, "mli.external")
     if ok then
-      injector.mount_info = external.mount()
-      if injector.mount_info.mounted then
-        log.info("external mods mounted from %s (%s)",
-                 injector.mount_info.source, injector.mount_info.method)
+      local r = external.resolve()
+      injector.mount_info = r
+      if r.mode ~= "none" then
+        mod_fs = r.mod_fs or state.fs          -- nil => mods are in love.filesystem
+        mod_roots = r.mod_roots or mod_roots
+        log.info("external mods: %s via %s (%s)", r.mode, tostring(r.source), tostring(r.method))
       else
-        log.info("no external mods mounted: %s", tostring(injector.mount_info.err))
+        log.info("no external mods: %s", tostring(r.err))
       end
     end
   end
 
-  local result = mod_loader.load(state.fs, mod_roots)
+  local result = mod_loader.load(mod_fs, mod_roots)
   state.patches_by_target = result.patches_by_target
   state.vars = result.vars
   state.dump = result.dump or opts.dump or false
@@ -228,10 +235,10 @@ function injector.init(opts)
 
   -- Human-readable one-screen summary (used by the on-device diagnostic popup).
   local mount_line
-  if injector.mount_info.mounted then
+  if injector.mount_info.mode and injector.mount_info.mode ~= "none" then
     mount_line = "mods source: " .. tostring(injector.mount_info.source)
   else
-    mount_line = "mods source: none (place BalatroMods.zip in Download)"
+    mount_line = "mods source: none (make Download/Mods/ or Mods.zip)"
   end
   injector.summary = table.concat({
     mount_line,
