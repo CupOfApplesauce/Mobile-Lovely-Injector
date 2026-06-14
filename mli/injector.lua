@@ -174,6 +174,39 @@ local function register_modules(modules)
   end
 end
 
+-- ---- lovely compatibility shim -------------------------------------------
+-- Steamodded and lovely-aware mods do `require "lovely"` and expect the native
+-- injector's API. We provide a pure-Lua equivalent backed by our patch engine.
+-- `apply_patches(filename, code)` is the important one: SMODS calls it to patch
+-- code it loads itself (mod files, shaders), so those get patched too.
+local function install_lovely_shim(mod_dir)
+  if mod_dir and not mod_dir:match("/$") then mod_dir = mod_dir .. "/" end
+  local lovely = {
+    version = "0.7.1",                  -- reported to mods; not the native build
+    mod_dir = mod_dir or "Mods/",
+    reload_patches = function() return true end,
+    apply_patches = function(filename, code)
+      if type(code) ~= "string" then return code end
+      local target = normalize_path(filename or "")
+      local patches = state.patches_by_target[target]
+      if not patches then return code end
+      local ok, patched = pcall(engine.apply, target, code, patches, { vars = state.vars })
+      return ok and patched or code        -- assert()-safe: always non-nil
+    end,
+    set_var = function(name, value)
+      if name then state.vars[name] = value end
+    end,
+    remove_var = function(name)
+      local had = name ~= nil and state.vars[name] ~= nil
+      if name then state.vars[name] = nil end
+      return had
+    end,
+  }
+  injector.lovely = lovely
+  package.preload["lovely"] = function() return lovely end
+  log.debug("registered lovely shim (mod_dir=%s)", tostring(lovely.mod_dir))
+end
+
 -- ---- public API ----------------------------------------------------------
 -- injector.init(opts)
 --   opts.fs         : optional filesystem adapter (defaults to love.filesystem)
@@ -250,6 +283,9 @@ function injector.init(opts)
 
   -- Modules must be available before the game (and main.lua) require them.
   register_modules(result.module_patches)
+
+  -- Provide a `lovely` module so Steamodded (and lovely-aware mods) work.
+  install_lovely_shim(mod_roots[1])
 
   if love and love.filesystem then
     install_hooks()

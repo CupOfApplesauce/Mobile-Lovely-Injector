@@ -385,6 +385,29 @@ do
 end
 
 -- ---------------------------------------------------------------------------
+-- lovely compatibility shim (required by Steamodded)
+-- ---------------------------------------------------------------------------
+section("lovely shim")
+do
+  check("lovely registered in package.preload", package.preload["lovely"] ~= nil)
+  local lovely = require("lovely")
+  check("lovely.version present", type(lovely.version) == "string")
+  check("lovely.mod_dir present", type(lovely.mod_dir) == "string" and lovely.mod_dir ~= "")
+  check("lovely.reload_patches() truthy", lovely.reload_patches() == true)
+  -- apply_patches runs the engine on the given code for that target
+  local patched = lovely.apply_patches("game.lua", "function G.init()\n    self_SPEEDFACTOR = 1\nend\n")
+  check("apply_patches injects mod patch", patched:find("MOD_PATCH_MARKER") ~= nil, patched)
+  -- assert()-safety: unknown target returns code unchanged (never nil)
+  local same = lovely.apply_patches("no_such_file.lua", "abc")
+  check("apply_patches returns code for unpatched target", same == "abc")
+  check("apply_patches never returns nil", lovely.apply_patches("x", "y") ~= nil)
+  -- vars
+  lovely.set_var("TESTVAR", "1")
+  check("set_var then remove_var reports existed", lovely.remove_var("TESTVAR") == true)
+  check("remove_var on missing returns false", lovely.remove_var("NOPE") == false)
+end
+
+-- ---------------------------------------------------------------------------
 -- shipped example mod parses and yields the expected patches
 -- ---------------------------------------------------------------------------
 section("examples/HelloMod")
