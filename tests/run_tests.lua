@@ -406,5 +406,48 @@ do
 end
 
 -- ---------------------------------------------------------------------------
+-- diagnostic: short popup, full log file, denied hint
+-- ---------------------------------------------------------------------------
+section("diagnostic popup / log")
+do
+  local D = require("mli.diagnostic")
+  os.execute("rm -rf /tmp/mli_diag && mkdir -p /tmp/mli_diag")
+  D.PUBLIC_DIRS = { "/tmp/mli_diag/" }
+
+  -- success case: concise popup, log written
+  local saved_love = _G.love
+  _G.love = { filesystem = { getSaveDirectory = function() return "/save/game" end } }
+  local popup = D.build_report("STATUS: injector ran OK",
+    "mods source: x\nmods (1): HelloMod\nfiles patched: 2\nmodule patches: 1",
+    { verbose = false })
+  local nlines = select(2, (popup .. "\n"):gsub("\n", ""))
+  check("popup is short (<= MAX_POPUP_LINES)", nlines <= D.MAX_POPUP_LINES, nlines)
+  check("popup shows status", popup:find("injector ran OK") ~= nil)
+  check("popup points to log", popup:find("Log: /tmp/mli_diag/") ~= nil)
+  local lf = io.open("/tmp/mli_diag/" .. D.REPORT_NAME)
+  check("log file written", lf ~= nil)
+  if lf then lf:close() end
+
+  -- verbose with a permission-denied probe: hint shows in popup, probe in file
+  local external = require("mli.external")
+  local orig_probe = external.read_probe
+  external.read_probe = function()
+    return { "mountFullPath (LOVE12+): no",
+             "[no]      /storage/emulated/0/Download/BalatroMods.zip  (Permission denied)" }
+  end
+  local popup2 = D.build_report("STATUS: injector ran OK",
+    "mods source: none\nmods (0): (none found)", { verbose = true })
+  local nlines2 = select(2, (popup2 .. "\n"):gsub("\n", ""))
+  check("verbose popup still short", nlines2 <= D.MAX_POPUP_LINES, nlines2)
+  check("popup shows All-files-access hint", popup2:find("All files access") ~= nil)
+  check("popup does NOT dump full probe", popup2:find("mods source probe") == nil)
+  local f = io.open("/tmp/mli_diag/" .. D.REPORT_NAME); local body = f:read("*a"); f:close()
+  check("log file contains the probe", body:find("mods source probe") ~= nil)
+  check("log file contains Permission denied detail", body:find("Permission denied") ~= nil)
+  external.read_probe = orig_probe
+  _G.love = saved_love
+end
+
+-- ---------------------------------------------------------------------------
 io.write(string.format("\n==== %d passed, %d failed ====\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)
