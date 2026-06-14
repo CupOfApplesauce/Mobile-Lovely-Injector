@@ -107,6 +107,37 @@ To confirm the path: launch the modded game once, then look for the log file
 MLI writes at `.../files/save/game/mli/log.txt`. The folder containing
 `mli/log.txt` is the save directory.
 
+### Required on Android 11+: grant "All files access"
+
+Modern Android (11+, and strictly enforced on Samsung One UI) sandboxes shared
+storage: an app may create and re-read *its own* files in `Download/`, but it
+**cannot read a file another app placed there** (e.g. a zip you copied in with a
+file manager) via a normal file path. The injector hits exactly this — the
+status popup will show your `BalatroMods.zip` as `Permission denied` (the file
+exists, it just can't be read).
+
+The fix is the **All-files-access** permission. Two one-time steps:
+
+**1. Add the permission to the APK manifest.** This needs a tool that decodes
+the binary `AndroidManifest.xml` (APKToolM / apktool — which you already use to
+get at `game.love`). After decoding, add this line inside the `<manifest>` tag,
+alongside the other `<uses-permission>` lines:
+
+```xml
+<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
+```
+
+Then rebuild and sign as usual.
+
+**2. Grant it on the device** (it is NOT a normal pop-up permission):
+- Settings → search **"All files access"** (or: Settings → Apps → ⋮ → Special
+  access → All files access), find **Balatro**, and set it to **Allowed**.
+- Relaunch. The popup's "mods source probe" should now show `[READ OK]` for the
+  zip, and mods will load.
+
+Until this is granted, mods can only be read from the (root-only) save
+directory; the public-folder method below depends on this permission.
+
 ### On locked-down devices (Samsung / Android 13+): use a public folder
 
 If your file manager can't open `/sdcard/Android/data/...` ("Access denied"),

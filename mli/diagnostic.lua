@@ -101,7 +101,17 @@ function D.build_report(status_line, detail, opts)
     if ok_ext and external.read_probe then
       add("")
       add("mods source probe:")
-      for _, line in ipairs(external.read_probe()) do add("  " .. line) end
+      local denied = false
+      for _, line in ipairs(external.read_probe()) do
+        add("  " .. line)
+        if line:find("[Pp]ermission denied") then denied = true end
+      end
+      if denied then
+        add("")
+        add(">> FIX: a mod file exists but can't be read.")
+        add("   Enable 'All files access' for this app in")
+        add("   Settings, then relaunch. (See docs/INSTALL.md)")
+      end
     end
   end
 
