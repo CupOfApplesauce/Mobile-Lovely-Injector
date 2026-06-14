@@ -201,6 +201,15 @@ function injector.init(opts)
   log.info("collected patches for %d target file(s); %d module patch(es)",
            target_count, #result.module_patches)
 
+  -- Human-readable one-screen summary (used by the on-device diagnostic popup).
+  injector.summary = table.concat({
+    "mods (" .. #result.mods .. "): " ..
+      (#result.mods > 0 and table.concat(result.mods, ", ") or "(none found)"),
+    "files patched: " .. target_count,
+    "module patches: " .. #result.module_patches,
+    "mod roots searched: " .. table.concat(mod_roots, ", "),
+  }, "\n")
+
   -- Modules must be available before the game (and main.lua) require them.
   register_modules(result.module_patches)
 
