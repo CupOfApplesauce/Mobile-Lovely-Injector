@@ -86,6 +86,23 @@ function D.build_report(status_line, detail, opts)
     add("")
     add("public folder write test:")
     for _, line in ipairs(probe_lines) do add(line) end
+
+    -- Own-file readback: can the app read a file it just wrote? (Proves read
+    -- works for its OWN files, isolating the scoped-storage ownership issue.)
+    if saved_to then
+      local rf = io.open(saved_to .. D.REPORT_NAME, "rb")
+      add("")
+      add("read own file back: " .. (rf and "OK" or "FAIL"))
+      if rf then rf:close() end
+    end
+
+    -- Mods-source read probe: why external mods weren't found.
+    local ok_ext, external = pcall(require, "mli.external")
+    if ok_ext and external.read_probe then
+      add("")
+      add("mods source probe:")
+      for _, line in ipairs(external.read_probe()) do add("  " .. line) end
+    end
   end
 
   add("")

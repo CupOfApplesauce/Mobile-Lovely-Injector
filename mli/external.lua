@@ -46,6 +46,29 @@ local function read_binary(path)
 end
 M._read_binary = read_binary
 
+-- Diagnostic: report, per candidate, whether the app can actually io.open it,
+-- distinguishing "No such file" (wrong path/name) from "Permission denied"
+-- (scoped-storage: can't read another app's file). Also reports whether
+-- mountFullPath (LÖVE 12 folder mount) is available. Returns a list of strings.
+function M.read_probe()
+  local out = {}
+  local mfp = (love and love.filesystem and love.filesystem.mountFullPath) and true or false
+  out[#out + 1] = "mountFullPath (LOVE12+): " .. (mfp and "yes" or "no")
+  local all = {}
+  for _, p in ipairs(M.FOLDER_CANDIDATES) do all[#all + 1] = p .. "/HelloMod/lovely.toml" end
+  for _, p in ipairs(M.ZIP_CANDIDATES) do all[#all + 1] = p end
+  for _, p in ipairs(all) do
+    local f, err = io.open(p, "rb")
+    if f then
+      f:close()
+      out[#out + 1] = "[READ OK] " .. p
+    else
+      out[#out + 1] = "[no]      " .. p .. "  (" .. tostring(err) .. ")"
+    end
+  end
+  return out
+end
+
 -- Attempt to mount external mods. Returns a result table:
 --   { mounted = bool, source = string|nil, method = "folder"|"zip"|nil,
 --     err = string|nil, tried = { ... } }
