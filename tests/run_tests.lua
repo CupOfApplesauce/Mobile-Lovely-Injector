@@ -256,6 +256,40 @@ do
   }, {})
   check("regex captured group used", out:find("%-%- saw x") ~= nil, out)
 end
+do
+  -- lazy quantifier *? maps to Lua's lazy '-' and matches shortest
+  local lp = engine._regex_to_lua("a.*?b")
+  check("lazy *? becomes '-'", lp:find("%-") ~= nil, lp)
+  local out = engine.apply("x.lua", "aXbYb\n", {
+    { kind = "regex", pattern = "a(?<mid>.*?)b", position = "at", payload = "[$mid]" },
+  }, {})
+  check("lazy captures shortest (X not XbY)", out:find("%[X%]") ~= nil and out:find("%[XbY%]") == nil, out)
+end
+do
+  -- counted repetition {n,m} expands correctly
+  local p23 = engine._regex_to_lua("ab{2,3}c")
+  check("{2,3} compiles + matches 2", ("abbc"):find(p23) ~= nil, p23)
+  check("{2,3} matches 3", ("abbbc"):find("^" .. p23) ~= nil)
+  check("{2,3} rejects 1", ("abc"):find("^" .. p23) == nil)
+  local p3 = engine._regex_to_lua("x{3}")
+  check("{3} needs exactly 3", ("xxx"):find("^" .. p3) ~= nil and ("xx"):find("^" .. p3) == nil)
+end
+do
+  -- '.' does not cross newlines (PCRE semantics)
+  local pat = engine._regex_to_lua("a.b")
+  check("'.' excludes newline", ("a\nb"):find(pat) == nil and ("axb"):find(pat) ~= nil, pat)
+end
+do
+  -- a malformed/unsupported patch is skipped without aborting the others
+  local src = "keep\nTARGET\n"
+  local out, stats = engine.apply("x.lua", src, {
+    { kind = "regex", pattern = "a|b", position = "after", payload = "NOPE" }, -- alternation: skipped
+    { kind = "pattern", pattern = "TARGET", position = "after", payload = "APPLIED" },
+  }, {})
+  check("good patch still applies after a skipped one", out:find("APPLIED") ~= nil, out)
+  check("skipped patch did not inject", out:find("NOPE") == nil)
+  check("stats report a skip", stats.skipped >= 1, stats and stats.skipped)
+end
 
 -- ---------------------------------------------------------------------------
 -- mod_loader + injector full pipeline

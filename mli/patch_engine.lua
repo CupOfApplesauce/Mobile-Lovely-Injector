@@ -116,75 +116,124 @@ local function apply_pattern(lines, patch, vars)
 end
 
 -- ---- regex patches (best effort) -----------------------------------------
--- Lua has no PCRE. We translate a useful subset of regex to Lua patterns so
--- the common SMODS regex patches work; anything we cannot translate is
--- skipped with a warning rather than producing a wrong result.
+-- Lua has no PCRE, but it covers more than it first appears: `-` is a lazy
+-- quantifier, and counted repetition can be expanded. We compile a regex into
+-- a sequence of "atoms" (each matching one unit) plus quantifiers, which lets
+-- us translate lazy (`*?`->`-`) and `{n,m}` faithfully. PCRE `.` does not match
+-- newlines, so we map it to `[^\n]`. Constructs Lua genuinely can't express
+-- (alternation, lookaround) are rejected so the caller skips rather than
+-- applying a wrong patch.
+local LUA_MAGIC = { ["("] = "%(", [")"] = "%)", ["."] = "%.", ["%"] = "%%",
+                    ["+"] = "%+", ["-"] = "%-", ["*"] = "%*", ["?"] = "%?",
+                    ["["] = "%[", ["]"] = "%]", ["^"] = "%^", ["$"] = "%$" }
+local CLASS_ESCAPE = { t = "\t", n = "\n", r = "\r", s = "%s", S = "%S",
+                       d = "%d", D = "%D", w = "%w", W = "%W" }
+
 local function regex_to_lua(re)
-  -- Reject features we cannot faithfully translate.
-  if re:find("|") then return nil, "alternation unsupported" end
-  if re:find("%(%?[:=!<]") and not re:find("%(%?<%w+>") then
-    return nil, "lookaround/non-capturing groups unsupported"
-  end
+  -- Reject what we cannot faithfully represent. Ignore escaped \| and the
+  -- named-group prefix (?<name>).
+  local bare = re:gsub("\\.", ""):gsub("%(%?<%w+>", "")
+  if bare:find("|") then return nil, "alternation unsupported" end
+  if bare:find("%(%?") then return nil, "lookaround/non-capturing group unsupported" end
 
   local out = {}
   local i, n = 1, #re
-  local LUA_MAGIC = { ["("] = true, [")"] = true, ["."] = true, ["%"] = true,
-                      ["+"] = true, ["-"] = true, ["*"] = true, ["?"] = true,
-                      ["["] = true, ["]"] = true, ["^"] = true, ["$"] = true }
-  while i <= n do
+
+  -- Read one atom (a single-unit matcher) starting at i. Returns lua-fragment,
+  -- next_i, or nil if the next token is not an atom (e.g. anchor/group/quant).
+  local function read_atom()
     local c = re:sub(i, i)
     if c == "\\" then
       local nx = re:sub(i + 1, i + 1)
-      local map = { t = "\t", n = "\n", r = "\r", s = "%s", S = "%S",
-                    d = "%d", D = "%D", w = "%w", W = "%W" }
-      if map[nx] then
-        out[#out + 1] = map[nx]
-      else
-        out[#out + 1] = "%" .. nx
-      end
       i = i + 2
-    elseif c == "(" then
-      -- named capture group (?<name>...) -> Lua capture ( ... ); plain ( ... )
-      local named = re:match("^%(%?<%w+>", i)
-      if named then
-        out[#out + 1] = "("
-        i = i + #named
-      else
-        out[#out + 1] = "("
-        i = i + 1
-      end
+      return CLASS_ESCAPE[nx] or (LUA_MAGIC[nx] and ("%" .. nx)) or nx
+    elseif c == "." then
+      i = i + 1
+      return "[^\n]"                 -- PCRE '.' excludes newline
     elseif c == "[" then
-      -- copy a character class through, translating \t etc inside it
       local j = i + 1
       local cls = { "[" }
+      if re:sub(j, j) == "^" then cls[#cls + 1] = "^"; j = j + 1 end
       while j <= n and re:sub(j, j) ~= "]" do
         local cc = re:sub(j, j)
         if cc == "\\" then
-          local nx = re:sub(j + 1, j + 1)
-          local map = { t = "\t", n = "\n", r = "\r", s = "%s", d = "%d", w = "%w" }
-          cls[#cls + 1] = map[nx] or nx
+          cls[#cls + 1] = CLASS_ESCAPE[re:sub(j + 1, j + 1)] or re:sub(j + 1, j + 1)
           j = j + 2
+        elseif cc == "%" then
+          cls[#cls + 1] = "%%"; j = j + 1
         else
-          cls[#cls + 1] = cc
-          j = j + 1
+          cls[#cls + 1] = cc; j = j + 1
         end
       end
       cls[#cls + 1] = "]"
-      out[#out + 1] = table.concat(cls)
       i = j + 1
-    elseif c == ")" or c == "." or c == "+" or c == "*" or c == "^" or c == "$" then
-      out[#out + 1] = c
+      return table.concat(cls)
+    elseif LUA_MAGIC[c] and c ~= "(" and c ~= ")" then
+      -- a magic char that is literal here (not a structural token we handle)
       i = i + 1
+      return LUA_MAGIC[c]
+    elseif c:match("[%w_%s,;=:'\"<>/!@#&]") then
+      i = i + 1
+      return c
+    end
+    return nil
+  end
+
+  -- Apply a quantifier (if any) at i to the lua-fragment `atom`.
+  local function apply_quantifier(atom)
+    local c = re:sub(i, i)
+    if c == "*" then
+      i = i + 1
+      if re:sub(i, i) == "?" then i = i + 1; return atom .. "-" end
+      return atom .. "*"
+    elseif c == "+" then
+      i = i + 1
+      if re:sub(i, i) == "?" then i = i + 1; return atom .. atom .. "-" end -- lazy +: one then lazy rest
+      return atom .. "+"
     elseif c == "?" then
-      out[#out + 1] = "?" -- Lua supports ? as optional for a single class
       i = i + 1
-    else
-      if LUA_MAGIC[c] then
-        out[#out + 1] = "%" .. c
-      else
-        out[#out + 1] = c
+      if re:sub(i, i) == "?" then i = i + 1 end
+      return atom .. "?"
+    elseif c == "{" then
+      local lo, hi, rest = re:match("^{(%d*),(%d*)}()", i)
+      local exact, rest2 = re:match("^{(%d+)}()", i)
+      if exact then
+        i = rest2
+        return atom:rep(tonumber(exact))
+      elseif lo then
+        i = rest
+        lo = tonumber(lo) or 0
+        local s = atom:rep(lo)
+        if hi == "" then
+          return s .. atom .. "*"            -- {n,}
+        else
+          return s .. (atom .. "?"):rep((tonumber(hi) or lo) - lo) -- {n,m}
+        end
       end
-      i = i + 1
+    end
+    return atom
+  end
+
+  while i <= n do
+    local c = re:sub(i, i)
+    if c == "(" then
+      local named = re:match("^%(%?<%w+>", i)
+      out[#out + 1] = "("
+      i = i + (named and #named or 1)
+    elseif c == ")" then
+      out[#out + 1] = ")"; i = i + 1
+    elseif c == "^" or c == "$" then
+      out[#out + 1] = c; i = i + 1
+    else
+      local before = i
+      local atom = read_atom()
+      if atom == nil then
+        -- unknown token; pass through escaped to avoid malformed patterns
+        out[#out + 1] = LUA_MAGIC[c] or c
+        i = (i == before) and (i + 1) or i
+      else
+        out[#out + 1] = apply_quantifier(atom)
+      end
     end
   end
   return table.concat(out)
@@ -294,34 +343,44 @@ end
 --            field ("pattern"|"regex"|"copy") plus the lovely fields.
 --   opts.vars: table of variables for {{lovely:...}} interpolation
 --   opts.read_source: function(rel_path) -> string|nil, used by copy patches
--- Returns the patched source string.
+-- Returns the patched source string, plus stats { applied, skipped, errors }.
+-- Each patch is applied in isolation (pcall): a single failing or non-matching
+-- patch is logged and skipped so it can never abort the others on the same
+-- file -- important on heavily-patched targets like card.lua.
 function engine.apply(target, source, patches, opts)
   opts = opts or {}
   local vars = opts.vars
   local read_source = opts.read_source or function() return nil end
+  local stats = { applied = 0, skipped = 0, errors = 0 }
 
   for _, patch in ipairs(patches) do
     local kind = patch.kind
-    if kind == "pattern" then
-      local lines = split_lines(source)
-      local out, applied = apply_pattern(lines, patch, vars)
-      if applied == 0 then
-        log.warn("pattern patch on %s matched 0 lines: %s", target, tostring(patch.pattern))
+    local ok, result, applied = pcall(function()
+      if kind == "pattern" then
+        local lines = split_lines(source)
+        local out, n = apply_pattern(lines, patch, vars)
+        return table.concat(out, "\n"), n
+      elseif kind == "regex" then
+        return apply_regex(source, patch, vars)
+      elseif kind == "copy" then
+        return apply_copy(source, patch, vars, patch._read_source or read_source), 1
+      else
+        error("unknown patch kind '" .. tostring(kind) .. "'")
       end
-      source = table.concat(out, "\n")
-    elseif kind == "regex" then
-      local applied
-      source, applied = apply_regex(source, patch, vars)
-      if applied == 0 then
-        log.debug("regex patch on %s matched 0 times", target)
-      end
-    elseif kind == "copy" then
-      source = apply_copy(source, patch, vars, patch._read_source or read_source)
+    end)
+    if not ok then
+      stats.errors = stats.errors + 1
+      log.error("patch (%s) on %s failed, skipped: %s", tostring(kind), target, tostring(result))
+    elseif applied == 0 then
+      stats.skipped = stats.skipped + 1
+      log.warn("%s patch on %s matched 0 times: %s", kind, target,
+               tostring(patch.pattern):sub(1, 80))
     else
-      log.warn("unknown patch kind '%s' on %s", tostring(kind), target)
+      stats.applied = stats.applied + 1
+      source = result
     end
   end
-  return source
+  return source, stats
 end
 
 engine._split_lines = split_lines       -- exposed for tests
