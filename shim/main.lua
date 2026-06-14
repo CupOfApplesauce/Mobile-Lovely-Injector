@@ -7,19 +7,22 @@
 -- main.lua. If anything in the injector fails, we fall back to running the
 -- game unmodified so a bad mod cannot brick the install.
 
--- DIAGNOSTIC: show a popup on launch reporting injector status + where the log
--- was written. Leave true while getting things working; set false for normal
--- play once you've confirmed mods load.
-local DIAGNOSTIC = true
+-- STATUS_POPUP: show a popup on launch reporting injector status, mods loaded,
+-- and where the log was written. A permanent feature -- set to false if you
+-- ever want a silent launch.
+local STATUS_POPUP = true
 
 local injector = require("mli.injector")
 
 local status_line, detail
+local injector_ok
 local ok, err = pcall(function() injector.boot() end)
 if ok then
+  injector_ok = true
   status_line = "STATUS: injector ran OK"
   detail = injector.summary or ""
 else
+  injector_ok = false
   status_line = "STATUS: injector FAILED -- game running UNMODIFIED"
   detail = tostring(err)
   print("[MLI] " .. status_line .. ": " .. detail)
@@ -34,7 +37,12 @@ else
   if chunk then chunk() end
 end
 
-if DIAGNOSTIC then
+if STATUS_POPUP then
+  -- Verbose (save dir + storage probe) only when something needs attention:
+  -- an injector error, or no mods were loaded.
+  local mod_count = (injector.stats and injector.stats.mod_count) or 0
+  local verbose = (not injector_ok) or mod_count == 0
+
   -- Show the report after the game's love.load runs (so the window exists).
   local ok_diag, diagnostic = pcall(require, "mli.diagnostic")
   local orig_load = love.load
@@ -43,7 +51,7 @@ if DIAGNOSTIC then
     pcall(function()
       local report
       if ok_diag then
-        report = diagnostic.build_report(status_line, detail)
+        report = diagnostic.build_report(status_line, detail, { verbose = verbose })
       else
         report = status_line .. "\n\n" .. (detail or "")
       end

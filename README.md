@@ -38,9 +38,17 @@ python3 tools/install.py path/to/Balatro.apk -o Balatro-modded.apk
 # 2. Install it
 adb install -r Balatro-modded.apk
 
-# 3. Put mods on the device, in the game's save directory under Mods/
-#    e.g. /sdcard/Android/data/<package>/files/save/<identity>/Mods/MyMod/
+# 3. Put your mods where the app can read them. Either:
+#    - the save dir:  .../files/save/game/Mods/MyMod/   (needs adb/root on
+#      locked-down devices), or
+#    - a PUBLIC folder you can reach with any file manager (recommended on
+#      Samsung / Android 13+):  Download/BalatroMods.zip  containing your mod
+#      folders at its root, or  Download/BalatroMods/  (LÖVE 12+).
 ```
+
+On launch the game shows a status popup reporting which mods loaded and where
+the log was written — handy since the save directory is often unreadable on
+modern Android.
 
 Before touching the device, you can dry-run your mods against the extracted
 game source on your PC — it applies every patch and compile-checks the results:

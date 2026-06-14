@@ -107,7 +107,36 @@ To confirm the path: launch the modded game once, then look for the log file
 MLI writes at `.../files/save/game/mli/log.txt`. The folder containing
 `mli/log.txt` is the save directory.
 
-### Installing a mod
+### On locked-down devices (Samsung / Android 13+): use a public folder
+
+If your file manager can't open `/sdcard/Android/data/...` ("Access denied"),
+you can't put mods in the save-directory `Mods/` folder. MLI handles this by
+loading mods from a **public** folder you *can* reach. On launch it looks for,
+in order:
+
+1. a folder `Download/BalatroMods/` (mounted directly, on LÖVE 12+), then
+2. a single archive `Download/BalatroMods.zip` (works on LÖVE 11+),
+
+and also checks `Documents/`. Whatever it finds is mounted as the `Mods/`
+folder, so everything below about mod layout still applies.
+
+**Recommended (works everywhere): the zip.**
+Put your mods inside a zip whose **root contains the mod folders directly**:
+
+```
+BalatroMods.zip
+├── HelloMod/
+│   └── lovely.toml
+└── Steamodded/
+    └── ...
+```
+
+Place it at `/storage/emulated/0/Download/BalatroMods.zip` (i.e. your
+**Downloads** folder). To add/update mods, rebuild the zip and replace it — any
+file manager or the built-in Files app can do this without root or a PC. The
+launch popup tells you which source was loaded and how many mods it found.
+
+### Installing a mod (save-directory method)
 
 Create `Mods/` in the save directory and drop the mod folder in:
 

@@ -377,5 +377,34 @@ do
 end
 
 -- ---------------------------------------------------------------------------
+-- external.lua: candidate ordering and binary read
+-- ---------------------------------------------------------------------------
+section("external mod bundle loader")
+do
+  local external = require("mli.external")
+  check("mount point is Mods", external.MOUNT_POINT == "Mods")
+  check("zip candidates include Download", (function()
+    for _, p in ipairs(external.ZIP_CANDIDATES) do
+      if p:find("/Download/BalatroMods%.zip$") then return true end
+    end
+    return false
+  end)())
+  check("folder candidates include Download", (function()
+    for _, p in ipairs(external.FOLDER_CANDIDATES) do
+      if p:find("/Download/BalatroMods$") then return true end
+    end
+    return false
+  end)())
+  -- read_binary returns nil for a missing file (no crash)
+  check("read_binary handles missing file", external._read_binary("/no/such/file/xyz") == nil)
+  -- mount with no love.filesystem reports gracefully
+  local saved = _G.love
+  _G.love = nil
+  local r = external.mount()
+  check("mount without love is graceful", r.mounted == false and r.err ~= nil)
+  _G.love = saved
+end
+
+-- ---------------------------------------------------------------------------
 io.write(string.format("\n==== %d passed, %d failed ====\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)

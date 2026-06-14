@@ -37,9 +37,13 @@ end
 
 -- Build the report text. `status_line` is a short headline; `detail` is an
 -- optional multi-line block (e.g. the injector summary or an error+traceback).
--- Returns the on-screen string; also writes it to the first writable public
--- folder so it persists somewhere reachable.
-function D.build_report(status_line, detail)
+-- `opts.verbose` (default false) adds the save-dir path and the per-folder
+-- write probe -- useful when troubleshooting (no mods found / injector error).
+-- The full report is always persisted to the first writable public folder so
+-- it's retrievable in a file manager even when the popup is concise.
+-- Returns the on-screen string.
+function D.build_report(status_line, detail, opts)
+  opts = opts or {}
   local L = {}
   local function add(s) L[#L + 1] = s end
 
@@ -49,35 +53,46 @@ function D.build_report(status_line, detail)
     add("")
     add(detail)
   end
-  add("")
 
+  -- Always build the full (verbose) text for the persisted file.
+  local full = { unpack and unpack(L) or table.unpack(L) }
+  local function addf(s) full[#full + 1] = s end
+  addf("")
   if love and love.filesystem and love.filesystem.getSaveDirectory then
     local ok, sd = pcall(love.filesystem.getSaveDirectory)
-    add("save dir:")
-    add("  " .. (ok and tostring(sd) or "?"))
-    add("")
+    addf("save dir:")
+    addf("  " .. (ok and tostring(sd) or "?"))
   end
 
-  -- The text we persist to disk is everything gathered so far (the probe
-  -- results below would be circular to include in the written file).
-  local persisted = table.concat(L, "\n")
-
-  add("public folder write test:")
+  -- Persist (without the probe results, which would be circular).
+  local persisted = table.concat(full, "\n")
   local saved_to
+  local probe_lines = {}
   for _, dir in ipairs(D.PUBLIC_DIRS) do
     local ok, err = try_write(dir .. D.REPORT_NAME, persisted)
-    add(("  %s %s%s"):format(ok and "[OK]" or "[NO]", dir,
-        ok and "" or ("  (" .. tostring(err) .. ")")))
+    probe_lines[#probe_lines + 1] = ("  %s %s%s"):format(
+      ok and "[OK]" or "[NO]", dir, ok and "" or ("  (" .. tostring(err) .. ")"))
     if ok and not saved_to then saved_to = dir end
   end
+
+  -- On-screen: verbose adds save dir + probe; otherwise just where the log went.
+  if opts.verbose then
+    add("")
+    if love and love.filesystem and love.filesystem.getSaveDirectory then
+      local ok, sd = pcall(love.filesystem.getSaveDirectory)
+      add("save dir:")
+      add("  " .. (ok and tostring(sd) or "?"))
+    end
+    add("")
+    add("public folder write test:")
+    for _, line in ipairs(probe_lines) do add(line) end
+  end
+
   add("")
   if saved_to then
-    add("Report written to:")
-    add("  " .. saved_to .. D.REPORT_NAME)
-    add("Open that in your file manager.")
+    add("Log: " .. saved_to .. D.REPORT_NAME)
   else
-    add("No public folder was writable.")
-    add("(App likely needs All-files-access permission.)")
+    add("No public folder writable (needs storage permission).")
   end
 
   return table.concat(L, "\n")

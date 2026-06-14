@@ -190,6 +190,22 @@ function injector.init(opts)
 
   log.info("Mobile Lovely Injector v%s starting", injector.VERSION)
 
+  -- Make external (public-folder) mods visible at the virtual "Mods" path
+  -- before scanning. Skipped in test mode (when a custom fs adapter is given).
+  injector.mount_info = { mounted = false }
+  if love and love.filesystem and not opts.fs and opts.mount_external ~= false then
+    local ok, external = pcall(require, "mli.external")
+    if ok then
+      injector.mount_info = external.mount()
+      if injector.mount_info.mounted then
+        log.info("external mods mounted from %s (%s)",
+                 injector.mount_info.source, injector.mount_info.method)
+      else
+        log.info("no external mods mounted: %s", tostring(injector.mount_info.err))
+      end
+    end
+  end
+
   local result = mod_loader.load(state.fs, mod_roots)
   state.patches_by_target = result.patches_by_target
   state.vars = result.vars
@@ -201,13 +217,28 @@ function injector.init(opts)
   log.info("collected patches for %d target file(s); %d module patch(es)",
            target_count, #result.module_patches)
 
+  -- Structured stats for the status popup / callers.
+  injector.stats = {
+    mods = result.mods,
+    mod_count = #result.mods,
+    targets = target_count,
+    modules = #result.module_patches,
+    mount = injector.mount_info,
+  }
+
   -- Human-readable one-screen summary (used by the on-device diagnostic popup).
+  local mount_line
+  if injector.mount_info.mounted then
+    mount_line = "mods source: " .. tostring(injector.mount_info.source)
+  else
+    mount_line = "mods source: none (place BalatroMods.zip in Download)"
+  end
   injector.summary = table.concat({
+    mount_line,
     "mods (" .. #result.mods .. "): " ..
       (#result.mods > 0 and table.concat(result.mods, ", ") or "(none found)"),
     "files patched: " .. target_count,
     "module patches: " .. #result.module_patches,
-    "mod roots searched: " .. table.concat(mod_roots, ", "),
   }, "\n")
 
   -- Modules must be available before the game (and main.lua) require them.
