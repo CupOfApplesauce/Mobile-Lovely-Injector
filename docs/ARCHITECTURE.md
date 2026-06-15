@@ -110,6 +110,19 @@ Two consequences:
   APK's already-mobile-fixed sources at runtime, so mobile-maker's changes are
   preserved automatically and no compat mod is needed.
 
+## Patched-file cache
+
+Patching a large mod set (e.g. Steamodded patches ~13 game files, some with
+hundreds of patches) takes minutes on a phone — and would otherwise happen on
+*every* launch. So the first time a given mod set is seen, each patched file is
+written to `mli/cache/<version>_<signature>/` in the save directory; subsequent
+launches load the patched files straight from the cache and skip patching
+entirely (seconds instead of minutes). The `<signature>` is a hash of every
+mod's `lovely` toml contents, so the cache invalidates automatically when you
+add, remove, or edit a mod. A corrupt/partial cache entry that fails to compile
+is detected and re-patched. To force a clean rebuild, delete `mli/cache/` in the
+save directory.
+
 ## Known limitations
 
 - **Regex patches are best-effort.** Lua has no PCRE. `patch_engine.regex_to_lua`

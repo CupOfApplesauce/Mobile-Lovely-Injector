@@ -551,6 +551,13 @@ do
   check("load_now spec passes", ok)
 end
 
+section("patched-file cache (subprocess)")
+do
+  local interp = (jit and "luajit") or "lua5.1"
+  local ok = os.execute(interp .. " tests/cache_spec.lua >/dev/null 2>&1")
+  check("cache spec passes", ok == true or ok == 0)
+end
+
 -- ---------------------------------------------------------------------------
 -- backtracking regex engine
 -- ---------------------------------------------------------------------------

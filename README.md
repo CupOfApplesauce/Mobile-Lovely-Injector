@@ -14,6 +14,13 @@ a PC every time you add or update a mod.
 `lovely.toml` patch system in plain Lua and runs it every time the game starts,
 so mods are drop-in: copy a mod folder onto the device and launch.
 
+**Status: Steamodded works.** MLI has been confirmed on a real device booting
+to the Balatro main menu with a fully working Steamodded mods menu. The first
+launch after adding/changing mods is slow (it patches every affected game file
+once — a few minutes with a large mod like Steamodded); the patched files are
+then cached, so subsequent launches are fast. See
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for limitations.
+
 ## How it works (one paragraph)
 
 The installer rewrites the APK's `main.lua` into a tiny shim and moves the

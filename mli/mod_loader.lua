@@ -100,6 +100,14 @@ function mod_loader.load(fs, mod_roots)
     mods = {},       -- names of discovered mods
   }
 
+  -- Content signature of the patch set, used as a cache key so patched files
+  -- are reused until the mods change. Lua 5.1 has no bitwise ops, so this is a
+  -- multiply-add rolling hash (djb2-style) over each toml's path + content.
+  local sig = 5381
+  local function hash_str(s)
+    for i = 1, #s do sig = (sig * 33 + s:byte(i)) % 4294967296 end
+  end
+
   for _, root in ipairs(mod_roots) do
     if fs.is_dir(root) then
       for _, name in ipairs(fs.list(root)) do
@@ -111,6 +119,7 @@ function mod_loader.load(fs, mod_roots)
             for _, file in ipairs(files) do
               local text = fs.read(file)
               if text then
+                hash_str(file); hash_str(text)
                 local doc, err = toml.parse(text)
                 if not doc then
                   log.error("failed to parse %s: %s", file, tostring(err))
@@ -131,6 +140,7 @@ function mod_loader.load(fs, mod_roots)
       end
     end
   end
+  out.signature = string.format("%08x", sig)
 
   -- Stable sort the flat patch list by ascending priority, preserving
   -- discovery order within equal priorities.
@@ -161,6 +171,7 @@ function mod_loader.load(fs, mod_roots)
     vars = out.vars,
     dump = out.dump,
     mods = out.mods,
+    signature = out.signature,
   }
 end
 

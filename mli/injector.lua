@@ -102,12 +102,42 @@ end
 -- Reads, patches, and compiles a single file. Returns chunk, err (mirroring
 -- love.filesystem.load's contract). Falls back to the original loader when
 -- there is nothing to do or something goes wrong.
+-- Cache path for a patched target (flattened so no subdirs are needed).
+local function cache_path(target)
+  if not state.cache_dir then return nil end
+  return state.cache_dir .. "/" .. (target:gsub("[/\\]", "__"))
+end
+
+-- Try to load a target's patched source from the cache. Returns chunk or nil.
+local function load_from_cache(target, path)
+  local cp = cache_path(target)
+  if not cp or not (love and love.filesystem) then return nil end
+  local ok, cached = pcall(function() return love.filesystem.read(cp) end)
+  if not (ok and cached) then return nil end
+  local chunk = loadstring(cached, "@" .. path)
+  if chunk then
+    log.info("cache hit: %s", target)
+    return chunk
+  end
+  return nil -- corrupt/stale cache entry: fall through to re-patch
+end
+
+local function write_cache(target, patched)
+  local cp = cache_path(target)
+  if not cp or not (love and love.filesystem and love.filesystem.write) then return end
+  pcall(function() love.filesystem.write(cp, patched) end)
+end
+
 local function load_patched(path)
   local target = normalize_path(path)
   local patches = state.patches_by_target[target]
   if not patches then
     return state.orig_load(path)
   end
+
+  -- Fast path: reuse the patched file from a previous boot.
+  local cached_chunk = load_from_cache(target, path)
+  if cached_chunk then return cached_chunk end
 
   local source = state.fs.read(path)
   if not source then
@@ -143,6 +173,7 @@ local function load_patched(path)
     log.error("compile error in patched %s even after safe re-apply: %s", target, tostring(err))
     return state.orig_load(path)
   end
+  write_cache(target, patched)        -- speed up the next boot
   return chunk
 end
 
@@ -329,6 +360,15 @@ function injector.init(opts)
   state.vars = result.vars
   state.dump = result.dump or opts.dump or false
 
+  -- Patched-file cache: first boot patches and writes results to the save dir;
+  -- later boots load the patched files directly (turning a multi-minute boot
+  -- into seconds). Keyed by injector version + the mod-set signature, so it
+  -- invalidates automatically when mods change.
+  if love and love.filesystem and opts.cache ~= false then
+    state.cache_dir = "mli/cache/" .. injector.VERSION .. "_" .. tostring(result.signature)
+    log.info("patch cache: %s", state.cache_dir)
+  end
+
   local target_count = 0
   for _ in pairs(state.patches_by_target) do target_count = target_count + 1 end
   log.info("discovered %d mod(s): %s", #result.mods, table.concat(result.mods, ", "))
@@ -384,6 +424,10 @@ function injector.run()
   end
   log.info("loading original main from %s", injector.ORIGINAL_MAIN)
 
+  -- Fast path: reuse the patched main.lua from a previous boot.
+  local cached = load_from_cache("main.lua", "main.lua")
+  if cached then return cached() end
+
   local source = state.fs.read(injector.ORIGINAL_MAIN)
   if not source then
     error("[mli] failed to read " .. injector.ORIGINAL_MAIN)
@@ -412,6 +456,7 @@ function injector.run()
   if not chunk then
     error("[mli] compile error in main.lua: " .. tostring(err))
   end
+  write_cache("main.lua", source)     -- speed up the next boot
   return chunk()
 end
 
