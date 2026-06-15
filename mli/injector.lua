@@ -362,10 +362,19 @@ function injector.init(opts)
 
   -- Patched-file cache: first boot patches and writes results to the save dir;
   -- later boots load the patched files directly (turning a multi-minute boot
-  -- into seconds). Keyed by injector version + the mod-set signature, so it
-  -- invalidates automatically when mods change.
+  -- into seconds). Keyed by the mod-set signature AND a hash of the engine
+  -- source, so the cache invalidates automatically both when mods change and
+  -- when MLI itself is updated (otherwise an engine fix wouldn't take effect
+  -- until the mods happened to change).
   if love and love.filesystem and opts.cache ~= false then
-    state.cache_dir = "mli/cache/" .. injector.VERSION .. "_" .. tostring(result.signature)
+    local code = 5381
+    for _, m in ipairs({ "mli/patch_engine.lua", "mli/regex.lua", "mli/toml.lua",
+                         "mli/mod_loader.lua", "mli/glob.lua", "mli/injector.lua" }) do
+      local s = state.fs.read(m)
+      if s then for k = 1, #s do code = (code * 33 + s:byte(k)) % 4294967296 end end
+    end
+    state.cache_dir = string.format("mli/cache/%s_%s_%08x",
+      injector.VERSION, tostring(result.signature), code)
     -- LÖVE's love.filesystem.write does not reliably create intermediate
     -- directories on Android, so make the cache dir up front or writes (and
     -- thus the whole cache) silently no-op.

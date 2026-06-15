@@ -286,37 +286,46 @@ local function matcher(s)
   }
 end
 
--- regex.find(compiled, text, init) -> s, e, caps_array, named_map | nil
+-- regex.find(compiled, text, init) -> s, e, caps_array, named_map, offsets | nil
+-- `offsets` maps group index AND name -> { rel_start, rel_end } relative to the
+-- match start (1-based within the matched substring), enabling root_capture
+-- splicing. rel_end < rel_start denotes an empty/zero-width group.
 function regex.find(c, text, init)
   init = init or 1
   local m = matcher(text)
   for start = init, #text + 1 do
     local e, caps = m.run(c.root, start)
     if e then
-      local arr, named = {}, {}
+      local arr, named, offsets = {}, {}, {}
       for idx = 1, c.ngroups do
         local cp = caps[idx]
         local v = cp and text:sub(cp[1], cp[2]) or ""
         arr[idx] = v
-        if c.names[idx] then named[c.names[idx]] = v end
+        if cp then
+          local off = { cp[1] - start + 1, cp[2] - start + 1 }
+          offsets[idx] = off
+          if c.names[idx] then named[c.names[idx]] = v; offsets[c.names[idx]] = off end
+        elseif c.names[idx] then
+          named[c.names[idx]] = v
+        end
       end
-      return start, e - 1, arr, named
+      return start, e - 1, arr, named, offsets
     end
   end
   return nil
 end
 
 -- regex.gsub(text, compiled, repl, limit) -> newtext, count
--- repl(whole, caps_array, named_map) -> replacement string
+-- repl(whole, caps_array, named_map, offsets) -> replacement string
 function regex.gsub(text, c, repl, limit)
   local out, pos, count = {}, 1, 0
   while pos <= #text + 1 do
     if limit and count >= limit then break end
-    local s, e, arr, named = regex.find(c, text, pos)
+    local s, e, arr, named, offsets = regex.find(c, text, pos)
     if not s then break end
     out[#out + 1] = text:sub(pos, s - 1)
     local whole = text:sub(s, e)
-    out[#out + 1] = repl(whole, arr, named) or whole
+    out[#out + 1] = repl(whole, arr, named, offsets) or whole
     count = count + 1
     if e < s then            -- empty match: emit one char, advance
       out[#out + 1] = text:sub(s, s)

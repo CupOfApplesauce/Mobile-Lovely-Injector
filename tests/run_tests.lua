@@ -339,6 +339,25 @@ do
   check("stats report a skip", stats.skipped >= 1, stats and stats.skipped)
 end
 
+do
+  -- root_capture: position applies relative to a named group inside the match,
+  -- not the whole match. SMODS uses this heavily; '$name' and 'name' both work.
+  -- 'at' replaces just the group:
+  local out = engine.apply("x.lua", "anim = Sprite(0,0, ATLAS['x'], pos)\n", {
+    { kind = "regex", pattern = "anim = Sprite\\(0,0, (?<atlas>ATLAS\\['x'\\]), pos\\)",
+      position = "at", root_capture = "atlas", payload = "get(y) or ATLAS['x']" },
+  }, {})
+  check("root_capture 'at' replaces only the group",
+    out:find("anim = Sprite(0,0, get(y) or ATLAS['x'], pos)", 1, true) ~= nil, out)
+  -- zero-width group as an insertion point with position 'after' and '$' prefix:
+  local out2 = engine.apply("x.lua", "AAA\nMID\nBBB\n", {
+    { kind = "regex", pattern = "AAA\n(?<root>)[\\s\\S]*BBB", position = "after",
+      root_capture = "$root", payload = "INS" },
+  }, {})
+  check("root_capture zero-width 'after' inserts at marker", out2:find("AAA\nINS", 1, true) ~= nil, out2)
+  check("root_capture keeps the rest of the match", out2:find("MID") ~= nil and out2:find("BBB") ~= nil, out2)
+end
+
 -- ---------------------------------------------------------------------------
 -- mod_loader + injector full pipeline
 -- ---------------------------------------------------------------------------

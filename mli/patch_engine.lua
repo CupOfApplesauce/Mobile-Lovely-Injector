@@ -290,9 +290,25 @@ local function apply_regex(source, patch, vars)
     return format_payload(payload, nil, prepend)
   end
 
+  -- root_capture names the group to anchor on; SMODS writes it both as 'name'
+  -- and '$name', so strip an optional leading '$'.
+  local root = patch.root_capture and patch.root_capture:gsub("^%$", "") or nil
   local applied
-  source, applied = rex.gsub(source, compiled, function(whole, arr, named)
+  source, applied = rex.gsub(source, compiled, function(whole, arr, named, offsets)
     local block = build_block(whole, arr, named)
+    -- root_capture: the patch position is applied relative to ONLY that named
+    -- capture group inside the match, leaving the rest of the match intact.
+    if root and offsets and offsets[root] then
+      local o = offsets[root]
+      local pre, mid, post = whole:sub(1, o[1] - 1), whole:sub(o[1], o[2]), whole:sub(o[2] + 1)
+      if position == "before" then
+        return pre .. block .. mid .. post
+      elseif position == "after" then
+        return pre .. mid .. block .. post
+      else -- at: replace just the captured group
+        return pre .. block .. post
+      end
+    end
     if position == "before" then
       return block .. "\n" .. whole
     elseif position == "after" then
