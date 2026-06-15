@@ -140,6 +140,20 @@ before = "main.lua"
   check("copy source[1]", doc.patches[2].copy.sources[1] == "src/core.lua", doc.patches[2].copy.sources[1])
   check("module name", doc.patches[3].module.name == "SMODS.version")
 end
+do
+  -- TOML multiline literal where content ends in quotes: up to two ' may
+  -- precede the closing ''' (SMODS uses this, e.g. `pattern = '''x = '''''`).
+  -- Regression for the create_text_input/profile-menu crash.
+  local doc = toml.parse([==[
+[a]
+p = '''args.current_prompt_text = '''''
+q = '''text ~= '''''
+plain = '''hello'''
+]==])
+  check("trailing 2-quote content kept", doc.a.p == "args.current_prompt_text = ''", "["..tostring(doc.a.p).."]")
+  check("trailing 1-quote-pair content kept", doc.a.q == "text ~= ''", "["..tostring(doc.a.q).."]")
+  check("plain multiline literal unaffected", doc.a.plain == "hello", "["..tostring(doc.a.plain).."]")
+end
 
 -- ---------------------------------------------------------------------------
 -- glob

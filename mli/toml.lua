@@ -121,23 +121,23 @@ function toml.parse(text)
   local function read_multiline(open, line, start)
     local close = open
     local rest = line:sub(start + #open)
-    -- TOML trims a leading newline immediately after the opening delimiter.
-    local collected = {}
-    -- check if it closes on the same line
-    local close_pos = rest:find(close, 1, true)
-    if close_pos then
-      return rest:sub(1, close_pos - 1), i
+    -- Same-line close: content runs up to the LAST closing delimiter on the
+    -- line. TOML allows up to two quote characters of content immediately
+    -- before the closing delimiter (e.g. '''a = '''''  ->  content "a = ''").
+    -- A greedy capture finds the final delimiter rather than the first.
+    local same = rest:match("^(.*)" .. close .. "%s*$")
+    if same then
+      return same, i
     end
-    collected[#collected + 1] = rest
+    local collected = { rest }
     local j = i + 1
     while j <= n do
       local l = lines[j]
-      local cp = l:find(close, 1, true)
-      if cp then
-        collected[#collected + 1] = l:sub(1, cp - 1)
+      local c = l:match("^(.*)" .. close .. "%s*$")
+      if c then
+        collected[#collected + 1] = c
         local value = table.concat(collected, "\n")
-        -- strip a single leading newline per TOML spec
-        value = value:gsub("^\n", "")
+        value = value:gsub("^\n", "") -- strip a single leading newline per spec
         return value, j
       end
       collected[#collected + 1] = l
