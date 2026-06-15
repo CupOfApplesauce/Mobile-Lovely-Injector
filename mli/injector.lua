@@ -83,6 +83,21 @@ local function dump_patched(target, source)
   love.filesystem.write(path, source)
 end
 
+-- Public dump: write a couple of key patched files to a public folder (via
+-- io.*) so they can be inspected on locked-down devices. Used for debugging
+-- mod integration; only fires for a small allowlist to keep it cheap.
+local PUBLIC_DUMP = { ["game.lua"] = "BalatroMLI_dump_game.lua",
+                      ["main.lua"] = "BalatroMLI_dump_main.lua" }
+local PUBLIC_DUMP_DIRS = { "/storage/emulated/0/Download/", "/storage/emulated/0/Documents/", "/sdcard/Download/" }
+local function public_dump(target, source)
+  local name = PUBLIC_DUMP[target]
+  if not name then return end
+  for _, dir in ipairs(PUBLIC_DUMP_DIRS) do
+    local f = io.open(dir .. name, "w")
+    if f then f:write(source); f:close(); log.info("dumped %s -> %s%s", target, dir, name); return end
+  end
+end
+
 -- ---- core patch application ----------------------------------------------
 -- Reads, patches, and compiles a single file. Returns chunk, err (mirroring
 -- love.filesystem.load's contract). Falls back to the original loader when
@@ -111,8 +126,9 @@ local function load_patched(path)
   if state.dump then
     pcall(dump_patched, target, patched)
   end
+  pcall(public_dump, target, patched)
 
-  log.debug("applied %d patch(es) to %s", #patches, target)
+  log.info("patched %s (%d patch set)", target, #patches)
   local chunk, err = loadstring(patched, "@" .. path)
   if not chunk then
     log.error("compile error in patched %s: %s", target, tostring(err))
@@ -377,6 +393,7 @@ function injector.run()
       log.error("failed to patch main.lua: %s", tostring(patched))
     end
   end
+  pcall(public_dump, "main.lua", source)
 
   local chunk, err = loadstring(source, "@main.lua")
   if not chunk then

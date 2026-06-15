@@ -46,19 +46,21 @@ if STATUS_POPUP then
   local mod_count = (injector.stats and injector.stats.mod_count) or 0
   local verbose = (not injector_ok) or mod_count == 0
 
-  -- Show the report after the game's love.load runs (so the window exists).
   local ok_diag, diagnostic = pcall(require, "mli.diagnostic")
+  -- Build + persist the report NOW (before the game's love.load). If a mod
+  -- crashes the game during love.load, the report is already written to the
+  -- public log/report folder for inspection.
+  local report
+  if ok_diag then
+    report = diagnostic.build_report(status_line, detail, { verbose = verbose })
+  else
+    report = status_line .. "\n\n" .. (detail or "")
+  end
+
+  -- Then show it on-screen after love.load (so the window exists).
   local orig_load = love.load
   love.load = function(...)
     if orig_load then orig_load(...) end
-    pcall(function()
-      local report
-      if ok_diag then
-        report = diagnostic.build_report(status_line, detail, { verbose = verbose })
-      else
-        report = status_line .. "\n\n" .. (detail or "")
-      end
-      love.window.showMessageBox("Mobile Lovely Injector", report, "info")
-    end)
+    pcall(love.window.showMessageBox, "Mobile Lovely Injector", report, "info")
   end
 end
