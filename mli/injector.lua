@@ -145,31 +145,84 @@ local function install_hooks()
     end
     return ("\n\t[mli] no file for module '%s'"):format(name)
   end
+  state.searcher = lovely_searcher
   -- insert after package.preload (index 1) so preload still wins
   table.insert(searchers, 2, lovely_searcher)
 end
 
+-- Restore the original loaders. Used by the shim's fallback so that, if the
+-- injector errors mid-boot, the unmodified game runs TRULY clean -- otherwise
+-- our hook would keep applying mod patches to files (e.g. cardarea.lua) while
+-- the mod that defines their globals (e.g. SMODS) never initialized, crashing
+-- the "unmodified" fallback.
+function injector.uninstall_hooks()
+  if state.orig_load and love and love.filesystem then
+    love.filesystem.load = state.orig_load
+  end
+  local searchers = package.loaders or package.searchers
+  if state.searcher and searchers then
+    for i, s in ipairs(searchers) do
+      if s == state.searcher then table.remove(searchers, i); break end
+    end
+    state.searcher = nil
+  end
+end
+
 -- ---- module patches ------------------------------------------------------
+-- A module patch's source can itself be patched: lovely lets other patches
+-- target the injected module via the chunk name `=[lovely <name> "<rel>"]`.
+-- We compile modules with exactly that chunk name so (a) those source patches
+-- apply and (b) tracebacks read the way SMODS' crash handler expects.
+local function compile_module(m)
+  local src = (m.read and m.read()) or state.fs.read(m.source)
+  if not src then return nil, "source not found at " .. tostring(m.source) end
+  local chunkname = string.format('=[lovely %s "%s"]', m.name, m.rel or m.source)
+  -- Other patches can target this module's source by the same string (lovely's
+  -- module chunk name, including the leading '=').
+  local lovely_target = chunkname
+  local patches = state.patches_by_target[lovely_target]
+  if patches then
+    local ok, patched = pcall(engine.apply, lovely_target, src, patches, { vars = state.vars })
+    if ok then
+      src = patched
+      log.debug("patched module source %s (%d patch set)", m.name, #patches)
+    else
+      log.error("failed to patch module %s: %s", m.name, tostring(patched))
+    end
+  end
+  local chunk, err = loadstring(src, chunkname)
+  if not chunk then return nil, "compile error: " .. tostring(err) end
+  return chunk
+end
+
+-- Register all module patches into package.preload (lazy). Modules that other
+-- modules require during load_now must already be here, so we register all
+-- before executing any load_now module.
 local function register_modules(modules)
   for _, m in ipairs(modules) do
     if not m.name or not m.source then
       log.warn("skipping malformed module patch")
     else
-      -- Read via the mod's own fs (external folder uses an FFI adapter); fall
-      -- back to the game/love filesystem.
-      local src = (m.read and m.read()) or state.fs.read(m.source)
-      if not src then
-        log.warn("module patch '%s': source not found at %s", m.name, m.source)
-      else
-        package.preload[m.name] = function(...)
-          local chunk, err = loadstring(src, "@" .. m.source)
-          if not chunk then
-            error(("[mli] module '%s' failed to compile: %s"):format(m.name, tostring(err)))
-          end
-          return chunk(...)
+      package.preload[m.name] = function(...)
+        local chunk, err = compile_module(m)
+        if not chunk then
+          error(("[mli] module '%s': %s"):format(m.name, tostring(err)))
         end
-        log.debug("registered module '%s' from %s", m.name, m.source)
+        return chunk(...)
       end
+      log.debug("registered module '%s' from %s", m.name, m.source)
+    end
+  end
+end
+
+-- Execute `load_now` modules immediately, in priority order, BEFORE main.lua --
+-- this is how SMODS' preflight runs and creates the SMODS global. Errors
+-- propagate so a failed preflight surfaces (and the shim falls back safely).
+local function run_load_now(modules)
+  for _, m in ipairs(modules) do
+    if m.load_now and m.name then
+      log.info("load_now: executing module '%s'", m.name)
+      require(m.name)
     end
   end
 end
@@ -182,7 +235,7 @@ end
 local function install_lovely_shim(mod_dir)
   if mod_dir and not mod_dir:match("/$") then mod_dir = mod_dir .. "/" end
   local lovely = {
-    version = "0.7.1",                  -- reported to mods; not the native build
+    version = "0.9.0",                  -- reported to mods; not the native build
     mod_dir = mod_dir or "Mods/",
     reload_patches = function() return true end,
     apply_patches = function(filename, code)
@@ -281,10 +334,9 @@ function injector.init(opts)
     "module patches: " .. #result.module_patches,
   }, "\n")
 
-  -- Modules must be available before the game (and main.lua) require them.
-  register_modules(result.module_patches)
-
-  -- Provide a `lovely` module so Steamodded (and lovely-aware mods) work.
+  -- Order matters for Steamodded's preflight: the lovely shim and loader hooks
+  -- must be live, and all module patches registered, BEFORE we execute any
+  -- load_now module (preflight requires "lovely", "SMODS.nativefs", etc.).
   install_lovely_shim(mod_roots[1])
 
   if love and love.filesystem then
@@ -292,6 +344,9 @@ function injector.init(opts)
   else
     log.warn("love.filesystem unavailable; loader hooks not installed (test mode?)")
   end
+
+  register_modules(result.module_patches)
+  run_load_now(result.module_patches)
 
   state.initialized = true
 end

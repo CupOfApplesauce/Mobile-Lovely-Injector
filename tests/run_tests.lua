@@ -507,5 +507,16 @@ do
 end
 
 -- ---------------------------------------------------------------------------
+-- load_now / module-source patching (runs in its own process: init is one-shot)
+-- ---------------------------------------------------------------------------
+section("load_now + module-source patch (subprocess)")
+do
+  local interp = (jit and "luajit") or "lua5.1"
+  local ok = os.execute(interp .. " tests/load_now_spec.lua >/dev/null 2>&1")
+  ok = (ok == true or ok == 0)
+  check("load_now spec passes", ok)
+end
+
+-- ---------------------------------------------------------------------------
 io.write(string.format("\n==== %d passed, %d failed ====\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)

@@ -33,6 +33,9 @@ else
       (os.date and os.date("%Y-%m-%d %H:%M:%S ") or "") .. detail .. "\n")
   end)
   -- Fall back to the untouched original main.lua so the game still starts.
+  -- Remove our loader hooks first, or the unmodified game would still get
+  -- mod patches applied to files whose mod globals never initialized.
+  pcall(function() injector.uninstall_hooks() end)
   local chunk = love.filesystem.load("mli/main_original.lua")
   if chunk then chunk() end
 end

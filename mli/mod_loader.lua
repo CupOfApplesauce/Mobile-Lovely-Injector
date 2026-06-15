@@ -56,18 +56,21 @@ local function collect_from_doc(doc, mod_dir, fs, priority, out)
       p.kind = "pattern"
       p.target = normalize_target(p.target)
       p._priority = priority
+      p._mod_dir = mod_dir          -- for {{lovely_hack:patch_dir}}
       out.targeted[#out.targeted + 1] = p
     elseif entry.regex then
       local p = entry.regex
       p.kind = "regex"
       p.target = normalize_target(p.target)
       p._priority = priority
+      p._mod_dir = mod_dir
       out.targeted[#out.targeted + 1] = p
     elseif entry.copy then
       local p = entry.copy
       p.kind = "copy"
       p.target = normalize_target(p.target)
       p._priority = priority
+      p._mod_dir = mod_dir
       p._read_source = read_source
       out.targeted[#out.targeted + 1] = p
     elseif entry.module then
@@ -76,7 +79,10 @@ local function collect_from_doc(doc, mod_dir, fs, priority, out)
       out.modules[#out.modules + 1] = {
         name = m.name,
         source = mod_dir .. "/" .. rel,
+        rel = rel,                   -- relative source (for lovely target name)
+        mod_dir = mod_dir,           -- owning mod dir (for patch_dir var)
         before = normalize_target(m.before),
+        load_now = m.load_now and true or false,
         priority = priority,
         read = function() return read_source(rel) end, -- bound to this mod's fs
       }

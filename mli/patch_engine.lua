@@ -31,8 +31,13 @@ local function leading_indent(line)
   return (line:match("^[ \t]*")) or ""
 end
 
-local function interpolate_vars(text, vars)
-  if not vars or not text then return text end
+local function interpolate_vars(text, vars, patch_dir)
+  if not text then return text end
+  if patch_dir then
+    -- lovely exposes the owning mod's patch directory to payloads.
+    text = text:gsub("{{lovely_hack:patch_dir}}", (patch_dir:gsub("%%", "%%%%")))
+  end
+  if not vars then return text end
   return (text:gsub("{{lovely:([%w_%-%.]+)}}", function(name)
     local v = vars[name]
     if v == nil then return "{{lovely:" .. name .. "}}" end
@@ -61,7 +66,7 @@ end
 -- source line (sliding window). Substring hits do not count.
 local function apply_pattern(lines, patch, vars)
   local position = patch.position or "after"
-  local payload = interpolate_vars(patch.payload or "", vars)
+  local payload = interpolate_vars(patch.payload or "", vars, patch._mod_dir)
   local match_indent = patch.match_indent
   local limit = patch.times -- nil = unlimited
   local applied = 0
@@ -267,7 +272,7 @@ local function apply_regex(source, patch, vars)
       payload = payload:gsub("%$" .. name, (val:gsub("%%", "%%%%")))
       payload = payload:gsub("%${" .. name .. "}", (val:gsub("%%", "%%%%")))
     end
-    payload = interpolate_vars(payload, vars)
+    payload = interpolate_vars(payload, vars, patch._mod_dir)
     local block = format_payload(payload, nil, patch.line_prepend)
     local whole = caps[1] -- when no groups, %0 isn't available; use full match below
     if position == "before" then
@@ -297,7 +302,7 @@ local function apply_regex(source, patch, vars)
       payload = payload:gsub("%$" .. name, safe)
       payload = payload:gsub("%${" .. name .. "}", safe)
     end
-    payload = interpolate_vars(payload, vars)
+    payload = interpolate_vars(payload, vars, patch._mod_dir)
     local block = format_payload(payload, nil, patch.line_prepend)
     local full = caps[1]
     if position == "before" then
@@ -327,7 +332,7 @@ local function apply_copy(source, patch, vars, read_source)
     end
   end
   if patch.payload then
-    parts[#parts + 1] = interpolate_vars(patch.payload, vars)
+    parts[#parts + 1] = interpolate_vars(patch.payload, vars, patch._mod_dir)
   end
   local block = table.concat(parts, "\n")
   if patch.position == "prepend" then
