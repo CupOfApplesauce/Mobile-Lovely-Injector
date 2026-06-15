@@ -264,52 +264,53 @@ local function apply_regex(source, patch, vars)
   local applied = 0
   local payload_template = patch.payload or ""
 
-  local function replace(...)
-    local caps = { ... }
+  -- Build the replacement block, substituting capture references in the
+  -- payload. Supports $name / ${name} (named groups, in capture order),
+  -- $1.. / ${1}.. (numbered) and $0 (whole match). Function replacements are
+  -- used so payload text is inserted literally. Crucially, any UNRESOLVED
+  -- reference is stripped: a stray '$' would otherwise produce invalid Lua and
+  -- fail the whole file's compilation.
+  local function build_block(whole, groups)
     local payload = payload_template
-    for idx, name in ipairs(names) do
-      local val = caps[idx] or ""
-      payload = payload:gsub("%$" .. name, (val:gsub("%%", "%%%%")))
-      payload = payload:gsub("%${" .. name .. "}", (val:gsub("%%", "%%%%")))
+    -- named groups, longest name first to avoid prefix clashes
+    local order = {}
+    for i, name in ipairs(names) do order[#order + 1] = { i = i, name = name } end
+    table.sort(order, function(a, b) return #a.name > #b.name end)
+    for _, e in ipairs(order) do
+      local v = tostring(groups[e.i] or "")
+      payload = payload:gsub("%${" .. e.name .. "}", function() return v end)
+      payload = payload:gsub("%$" .. e.name, function() return v end)
     end
+    -- numbered + whole-match references
+    local function num(d)
+      d = tonumber(d)
+      if d == 0 then return whole end
+      return tostring(groups[d] or "")
+    end
+    payload = payload:gsub("%${(%d+)}", num):gsub("%$(%d+)", num)
     payload = interpolate_vars(payload, vars, patch._mod_dir)
-    local block = format_payload(payload, nil, patch.line_prepend)
-    local whole = caps[1] -- when no groups, %0 isn't available; use full match below
-    if position == "before" then
-      return block .. "\n" .. "%0"
-    elseif position == "after" then
-      return "%0" .. "\n" .. block
-    else -- at / replace
-      return block
-    end
+    -- strip any remaining unresolved capture refs so '$' can't break Lua
+    payload = payload:gsub("%${%w+}", ""):gsub("%$%w+", "")
+    return format_payload(payload, nil, patch.line_prepend)
   end
 
-  -- gsub with function gives captures; if there are no capture groups we need
-  -- the whole match. Wrap the entire pattern in a capture in that case.
-  local pat = lua_pat
-  if #names == 0 then pat = "(" .. lua_pat .. ")" end
+  -- Wrap the whole pattern so the gsub callback always receives the full match
+  -- as its first argument, with inner groups following. Keep ^ / $ anchors
+  -- outside the added capture (Lua only treats them as anchors at the ends).
+  local core, pre, post = lua_pat, "", ""
+  if core:sub(1, 1) == "^" then pre = "^"; core = core:sub(2) end
+  if core:sub(-1) == "$" and core:sub(-2) ~= "%$" then post = "$"; core = core:sub(1, -2) end
+  local pat = pre .. "(" .. core .. ")" .. post
 
-  local count
-  source, count = source:gsub(pat, function(...)
+  source = source:gsub(pat, function(whole, ...)
     if limit and applied >= limit then return nil end
     applied = applied + 1
-    -- position before/after need the full match; emulate with the first cap
-    local caps = { ... }
-    local payload = payload_template
-    for idx, name in ipairs(names) do
-      local val = caps[idx] or ""
-      local safe = val:gsub("%%", "%%%%")
-      payload = payload:gsub("%$" .. name, safe)
-      payload = payload:gsub("%${" .. name .. "}", safe)
-    end
-    payload = interpolate_vars(payload, vars, patch._mod_dir)
-    local block = format_payload(payload, nil, patch.line_prepend)
-    local full = caps[1]
+    local block = build_block(whole, { ... })
     if position == "before" then
-      return block .. "\n" .. full
+      return block .. "\n" .. whole
     elseif position == "after" then
-      return full .. "\n" .. block
-    else
+      return whole .. "\n" .. block
+    else -- at / replace
       return block
     end
   end, limit)
@@ -386,6 +387,44 @@ function engine.apply(target, source, patches, opts)
     end
   end
   return source, stats
+end
+
+-- engine.apply_safe(target, source, patches, opts, compile)
+-- Applies patches one at a time, keeping only those that leave the source
+-- COMPILABLE (compile(src) returns truthy). Guarantees the result still
+-- compiles, so a single bad patch can never discard an entire file's patches
+-- (e.g. losing Steamodded's init injection because some other regex produced
+-- invalid Lua). Slower than apply(); used as a fallback when the all-at-once
+-- result fails to compile.
+function engine.apply_safe(target, source, patches, opts, compile)
+  -- Fast pass: pattern/copy payloads are literal Lua and rarely break syntax,
+  -- so we only recompile after `regex` patches (the ones that can emit invalid
+  -- Lua). This keeps the number of compiles ~= the number of regex patches.
+  local function pass(strict)
+    local kept = source
+    local skipped = 0
+    for _, patch in ipairs(patches) do
+      local ok, candidate = pcall(engine.apply, target, kept, { patch }, opts)
+      local check = strict or patch.kind == "regex"
+      if ok and candidate and (not check or compile(candidate)) then
+        kept = candidate
+      else
+        skipped = skipped + 1
+      end
+    end
+    return kept, skipped
+  end
+
+  local kept, skipped = pass(false)
+  if not compile(kept) then
+    -- A trusted (pattern/copy) patch must have broken it; redo validating all.
+    kept, skipped = pass(true)
+  end
+  if skipped > 0 then
+    log.warn("%s: kept %d/%d patches (%d skipped to stay compilable)",
+             target, #patches - skipped, #patches, skipped)
+  end
+  return kept
 end
 
 engine._split_lines = split_lines       -- exposed for tests

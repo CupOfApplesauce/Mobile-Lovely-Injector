@@ -257,6 +257,40 @@ do
   check("regex captured group used", out:find("%-%- saw x") ~= nil, out)
 end
 do
+  -- before/after must preserve the WHOLE match, not just the first group
+  local out = engine.apply("x.lua", "abc\n", {
+    { kind = "regex", pattern = "a(?<x>b)c", position = "after", payload = "X" },
+  }, {})
+  check("regex after keeps full match", out:find("abc\nX") ~= nil, out)
+end
+do
+  -- $0 (whole), $1 (numbered) and $name all resolve
+  local out = engine.apply("x.lua", "b\n", {
+    { kind = "regex", pattern = "(?<x>b)", position = "at", payload = "[$0][$1][$x]" },
+  }, {})
+  check("regex $0/$1/$name resolve", out:find("%[b%]%[b%]%[b%]") ~= nil, out)
+end
+do
+  -- an unresolved $ref is stripped so no stray '$' breaks compilation
+  local out = engine.apply("x.lua", "b\n", {
+    { kind = "regex", pattern = "b", position = "at", payload = "v=[$nope]" },
+  }, {})
+  check("unresolved $ref stripped (no literal $)", out:find("%$") == nil and out:find("v=%[%]") ~= nil, out)
+end
+do
+  -- apply_safe keeps compilable patches and drops a syntax-breaking one
+  local function compile(s) return (loadstring(s)) end
+  local src = "X=1\n"
+  local kept = engine.apply_safe("x.lua", src, {
+    { kind = "copy", position = "append", payload = "Y=2" },
+    { kind = "copy", position = "append", payload = "Z=@@@ invalid lua @@@" },
+    { kind = "copy", position = "append", payload = "W=3" },
+  }, {}, compile)
+  check("apply_safe result compiles", compile(kept) ~= nil, kept)
+  check("apply_safe kept the good patches", kept:find("Y=2") and kept:find("W=3"))
+  check("apply_safe dropped the broken patch", kept:find("Z=@@@") == nil)
+end
+do
   -- lazy quantifier *? maps to Lua's lazy '-' and matches shortest
   local lp = engine._regex_to_lua("a.*?b")
   check("lazy *? becomes '-'", lp:find("%-") ~= nil, lp)

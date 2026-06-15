@@ -123,15 +123,24 @@ local function load_patched(path)
     return state.orig_load(path)
   end
 
-  if state.dump then
-    pcall(dump_patched, target, patched)
-  end
-  pcall(public_dump, target, patched)
-
   log.info("patched %s (%d patch set)", target, #patches)
   local chunk, err = loadstring(patched, "@" .. path)
   if not chunk then
-    log.error("compile error in patched %s: %s", target, tostring(err))
+    -- A patch produced invalid Lua. Rather than discard ALL patches for this
+    -- file (which would drop critical ones like Steamodded's init injection),
+    -- re-apply patch-by-patch keeping only those that stay compilable.
+    log.warn("patched %s did not compile (%s); re-applying patches individually",
+             target, tostring(err))
+    patched = engine.apply_safe(target, source, patches, { vars = state.vars },
+                                function(s) return (loadstring(s)) end)
+    chunk, err = loadstring(patched, "@" .. path)
+  end
+
+  if state.dump then pcall(dump_patched, target, patched) end
+  pcall(public_dump, target, patched)
+
+  if not chunk then
+    log.error("compile error in patched %s even after safe re-apply: %s", target, tostring(err))
     return state.orig_load(path)
   end
   return chunk
@@ -385,13 +394,17 @@ function injector.run()
   local patches = state.patches_by_target["main.lua"]
   if patches then
     local ok, patched = pcall(engine.apply, "main.lua", source, patches, { vars = state.vars })
-    if ok then
+    if ok and patched and loadstring(patched) then
       source = patched
-      if state.dump then pcall(dump_patched, "main.lua", source) end
       log.info("applied %d patch(es) to main.lua", #patches)
+    elseif ok and patched then
+      log.warn("patched main.lua did not compile; re-applying patches individually")
+      source = engine.apply_safe("main.lua", source, patches, { vars = state.vars },
+                                 function(s) return (loadstring(s)) end)
     else
       log.error("failed to patch main.lua: %s", tostring(patched))
     end
+    if state.dump then pcall(dump_patched, "main.lua", source) end
   end
   pcall(public_dump, "main.lua", source)
 
