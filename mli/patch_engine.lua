@@ -397,6 +397,14 @@ function engine.apply_safe(target, source, patches, opts, compile)
         kept = candidate
       else
         skipped = skipped + 1
+        if strict then
+          -- Name the dropped patch so we can see exactly what functionality is
+          -- missing (a dropped patch is usually a real bug in the engine).
+          local what = patch.pattern or (patch.sources and table.concat(patch.sources, ",")) or "?"
+          log.warn("DROPPED %s patch on %s (won't compile): %s | payload: %s",
+                   tostring(patch.kind), target, tostring(what):gsub("\n", "\\n"):sub(1, 90),
+                   tostring(patch.payload):gsub("\n", "\\n"):sub(1, 90))
+        end
       end
     end
     return kept, skipped

@@ -366,6 +366,12 @@ function injector.init(opts)
   -- invalidates automatically when mods change.
   if love and love.filesystem and opts.cache ~= false then
     state.cache_dir = "mli/cache/" .. injector.VERSION .. "_" .. tostring(result.signature)
+    -- LÖVE's love.filesystem.write does not reliably create intermediate
+    -- directories on Android, so make the cache dir up front or writes (and
+    -- thus the whole cache) silently no-op.
+    if love.filesystem.createDirectory then
+      pcall(love.filesystem.createDirectory, state.cache_dir)
+    end
     log.info("patch cache: %s", state.cache_dir)
   end
 
