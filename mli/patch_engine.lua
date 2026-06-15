@@ -8,6 +8,7 @@
 
 local glob = require("mli.glob")
 local log  = require("mli.log")
+local rex  = require("mli.regex")
 
 local engine = {}
 
@@ -253,59 +254,45 @@ local function regex_group_names(re)
 end
 
 local function apply_regex(source, patch, vars)
-  local lua_pat, err = regex_to_lua(patch.pattern)
-  if not lua_pat then
-    log.warn("skipping regex patch (%s): %s", tostring(patch.pattern), err)
+  local compiled, err = rex.compile(patch.pattern)
+  if not compiled then
+    log.warn("skipping regex patch (%s): %s", tostring(patch.pattern):sub(1, 60), tostring(err))
     return source, 0
   end
-  local names = regex_group_names(patch.pattern)
   local position = patch.position or "at"
   local limit = patch.times
-  local applied = 0
-  local payload_template = patch.payload or ""
 
-  -- Build the replacement block, substituting capture references in the
-  -- payload. Supports $name / ${name} (named groups, in capture order),
-  -- $1.. / ${1}.. (numbered) and $0 (whole match). Function replacements are
-  -- used so payload text is inserted literally. Crucially, any UNRESOLVED
-  -- reference is stripped: a stray '$' would otherwise produce invalid Lua and
-  -- fail the whole file's compilation.
-  local function build_block(whole, groups)
-    local payload = payload_template
-    -- named groups, longest name first to avoid prefix clashes
-    local order = {}
-    for i, name in ipairs(names) do order[#order + 1] = { i = i, name = name } end
-    table.sort(order, function(a, b) return #a.name > #b.name end)
-    for _, e in ipairs(order) do
-      local v = tostring(groups[e.i] or "")
-      payload = payload:gsub("%${" .. e.name .. "}", function() return v end)
-      payload = payload:gsub("%$" .. e.name, function() return v end)
+  -- Substitute capture references in a string: $name/${name} (named groups),
+  -- $1../${1} (numbered) and $0 (whole match). Used for BOTH the payload and
+  -- line_prepend (SMODS commonly uses line_prepend='$indent'). Unresolved refs
+  -- are stripped so a stray '$' can't produce invalid Lua.
+  local function substitute(text, whole, arr, named)
+    if not text or text == "" then return text end
+    for name, v in pairs(named) do
+      v = tostring(v)
+      text = text:gsub("%${" .. name .. "}", function() return v end)
+      text = text:gsub("%$" .. name .. "%f[%W]", function() return v end)
+      text = text:gsub("%$" .. name .. "$", function() return v end)
     end
-    -- numbered + whole-match references
     local function num(d)
       d = tonumber(d)
       if d == 0 then return whole end
-      return tostring(groups[d] or "")
+      return tostring(arr[d] or "")
     end
-    payload = payload:gsub("%${(%d+)}", num):gsub("%$(%d+)", num)
-    payload = interpolate_vars(payload, vars, patch._mod_dir)
-    -- strip any remaining unresolved capture refs so '$' can't break Lua
-    payload = payload:gsub("%${%w+}", ""):gsub("%$%w+", "")
-    return format_payload(payload, nil, patch.line_prepend)
+    text = text:gsub("%${(%d+)}", num):gsub("%$(%d+)", num)
+    text = interpolate_vars(text, vars, patch._mod_dir)
+    return (text:gsub("%${%w+}", ""):gsub("%$[%w_]+", ""))
   end
 
-  -- Wrap the whole pattern so the gsub callback always receives the full match
-  -- as its first argument, with inner groups following. Keep ^ / $ anchors
-  -- outside the added capture (Lua only treats them as anchors at the ends).
-  local core, pre, post = lua_pat, "", ""
-  if core:sub(1, 1) == "^" then pre = "^"; core = core:sub(2) end
-  if core:sub(-1) == "$" and core:sub(-2) ~= "%$" then post = "$"; core = core:sub(1, -2) end
-  local pat = pre .. "(" .. core .. ")" .. post
+  local function build_block(whole, arr, named)
+    local payload = substitute(patch.payload or "", whole, arr, named)
+    local prepend = substitute(patch.line_prepend, whole, arr, named)
+    return format_payload(payload, nil, prepend)
+  end
 
-  source = source:gsub(pat, function(whole, ...)
-    if limit and applied >= limit then return nil end
-    applied = applied + 1
-    local block = build_block(whole, { ... })
+  local applied
+  source, applied = rex.gsub(source, compiled, function(whole, arr, named)
+    local block = build_block(whole, arr, named)
     if position == "before" then
       return block .. "\n" .. whole
     elseif position == "after" then

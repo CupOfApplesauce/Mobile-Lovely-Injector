@@ -552,5 +552,35 @@ do
 end
 
 -- ---------------------------------------------------------------------------
+-- backtracking regex engine
+-- ---------------------------------------------------------------------------
+section("regex engine")
+do
+  local re = require("mli.regex")
+  local function find(pat, txt)
+    local c = re.compile(pat)
+    if not c then return nil end
+    return re.find(c, txt)
+  end
+  check("alternation", (function() local _,_,_,nm = find("(?<k>foo|bar)", "zzbar"); return nm and nm.k == "bar" end)())
+  check("group repetition (.*\\n)* across lines", (function()
+    local c = re.compile("A(.*\\n)*B"); return select(1, re.find(c, "A\nx\ny\nB")) == 1 end)())
+  check("lazy named capture", (function() local _,_,_,nm = find("a(?<m>.*?)b", "aXbYb"); return nm and nm.m == "X" end)())
+  check("non-capturing group", select(1, find("(?:ab)+", "ababab")) == 1)
+  check("'.' excludes newline", select(1, find("a.c", "a\ncaxc")) == 4)
+  -- big-input: group repetition between RARE anchors (as real SMODS patches
+  -- do) must be fast on a large file.
+  local big = "RAREBEGIN x\n" .. string.rep("filler middle line here\n", 4000) .. "RAREBEGIN y\nEND\n"
+  local c = re.compile("RAREBEGIN (.*\\n)*RAREBEGIN ")
+  local t0 = os.clock()
+  local s = re.find(c, big)
+  check("group repetition across a large file is fast", s ~= nil and (os.clock() - t0) < 3, os.clock() - t0)
+  -- full regex_spec subprocess (covers CRT-style removal)
+  local interp = (jit and "luajit") or "lua5.1"
+  local ok = os.execute(interp .. " tests/regex_spec.lua >/dev/null 2>&1")
+  check("regex_spec passes", ok == true or ok == 0)
+end
+
+-- ---------------------------------------------------------------------------
 io.write(string.format("\n==== %d passed, %d failed ====\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)
