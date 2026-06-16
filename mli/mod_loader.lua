@@ -142,11 +142,29 @@ function mod_loader.load(fs, mod_roots)
   end
   out.signature = string.format("%08x", sig)
 
-  -- Stable sort the flat patch list by ascending priority, preserving
-  -- discovery order within equal priorities.
+  -- Order patches exactly as lovely-core does (patch/table.rs): the kind
+  -- determines the *phase*, which dominates priority. All `copy` patches are
+  -- applied first, then `pattern`, then `regex`; within a phase, patches are
+  -- stable-sorted by ascending priority, ties broken by discovery order. This
+  -- matters because some SMODS `regex` patches only match after a sibling
+  -- `pattern` patch (same priority) has already reshaped the source -- e.g. the
+  -- Glass Joker scaling `pattern` must collapse a nested block before the
+  -- joker_retriggers `regex` can anchor on the result.
+  local function phase_rank(p)
+    return p.kind == "copy" and 0 or 1            -- copy phase precedes the rest
+  end
+  local function kind_rank(p)
+    return p.kind == "pattern" and 0 or 1         -- pattern before regex in phase 1
+  end
   for idx, p in ipairs(out.targeted) do p._order = idx end
   table.sort(out.targeted, function(a, b)
+    local pa, pb = phase_rank(a), phase_rank(b)
+    if pa ~= pb then return pa < pb end
     if a._priority ~= b._priority then return a._priority < b._priority end
+    if pa == 1 then
+      local ka, kb = kind_rank(a), kind_rank(b)
+      if ka ~= kb then return ka < kb end
+    end
     return a._order < b._order
   end)
 

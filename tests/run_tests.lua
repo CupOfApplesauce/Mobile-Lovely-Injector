@@ -356,6 +356,18 @@ do
   }, {})
   check("root_capture zero-width 'after' inserts at marker", out2:find("AAA\nINS", 1, true) ~= nil, out2)
   check("root_capture keeps the rest of the match", out2:find("MID") ~= nil and out2:find("BBB") ~= nil, out2)
+  -- numeric group reference: SMODS' fixes.toml Crimson Heart patch uses
+  -- root_capture = '$1' to anchor on an unnamed group. 'at' must replace ONLY
+  -- group 1, keeping the `if ... then` prefix that precedes it in the match.
+  -- note the trailing space after `then` (Balatro's source has one); the
+  -- pattern's `\s+\n` consumes it plus the newline before the captured group.
+  local out3 = engine.apply("x.lua", "if cond then \n        return\nend\n", {
+    { kind = "regex", pattern = "if cond then\\s+\n((?<indent>[\t ]*)return)",
+      position = "at", root_capture = "$1", payload = "block()" },
+  }, {})
+  check("root_capture numeric '$1' replaces only group 1, keeps prefix",
+    out3:find("if cond then", 1, true) ~= nil and out3:find("block()", 1, true) ~= nil
+      and out3:find("return", 1, true) == nil, out3)
 end
 
 -- ---------------------------------------------------------------------------
@@ -416,6 +428,44 @@ do
   check("main.lua has 1 patch", result.patches_by_target["main.lua"] and #result.patches_by_target["main.lua"] == 1)
   check("1 module patch", #result.module_patches == 1)
   check("module source path bound to mod dir", result.module_patches[1].source == "Mods/TestMod/modules/greet.lua", result.module_patches[1].source)
+end
+
+-- Patch application order must follow lovely: within one target, all `copy`
+-- patches apply first, then `pattern`, then `regex` -- regardless of the order
+-- they were declared. (SMODS relies on a pattern reshaping source before a
+-- sibling regex can match.) Declared here deliberately as regex, pattern, copy.
+do
+  FS["Mods/OrderMod/lovely.toml"] = [==[
+[manifest]
+priority = 0
+
+[[patches]]
+[patches.regex]
+target = "order.lua"
+pattern = "Z"
+position = "at"
+payload = "z"
+
+[[patches]]
+[patches.pattern]
+target = "order.lua"
+pattern = "Y"
+position = "at"
+payload = "y"
+
+[[patches]]
+[patches.copy]
+target = "order.lua"
+position = "append"
+payload = "X"
+]==]
+  local result = mod_loader.load(fs_adapter, { "Mods" })
+  local list = result.patches_by_target["order.lua"]
+  local kinds = {}
+  for _, p in ipairs(list or {}) do kinds[#kinds + 1] = p.kind end
+  check("ordering: copy, then pattern, then regex within same priority",
+    table.concat(kinds, ",") == "copy,pattern,regex", table.concat(kinds, ","))
+  FS["Mods/OrderMod/lovely.toml"] = nil
 end
 
 local injector = require("mli.injector")
