@@ -406,6 +406,9 @@ function G.init()
 end
 return G
 ]],
+  -- a LÖVE-thread worker (loaded in its own state) + a host that spawns it.
+  ["engine/worker.lua"] = "WORKER_FLAG = false\nreturn true\n",
+  ["engine/threadhost.lua"] = "T = love.thread.newThread('engine/worker.lua')\nreturn true\n",
   -- a mod with a pattern patch (game.lua), a copy patch (main.lua),
   -- and a module patch
   ["Mods/TestMod/lovely.toml"] = [==[
@@ -439,6 +442,20 @@ target = '=[SMODS _ "src/demo.lua"]'
 pattern = "local marker = false"
 position = "at"
 payload = "local marker = true"
+
+[[patches]]
+[patches.pattern]
+target = "engine/worker.lua"
+pattern = "WORKER_FLAG = false"
+position = "at"
+payload = "WORKER_FLAG = true"
+
+[[patches]]
+[patches.pattern]
+target = "engine/threadhost.lua"
+pattern = "T = love.thread.newThread('engine/worker.lua')"
+position = "at"
+payload = "T = love.thread.newThread('engine/worker.lua')"
 ]==],
   ["Mods/TestMod/modules/greet.lua"] = [[return "hello-from-module"]],
 }
@@ -581,6 +598,20 @@ do
       local f1 = load(demo, cn)
       check("global load() hook patches SMODS-style chunk", type(f1) == "function" and f1() == true)
     end
+  end
+
+  -- thread-aware patching: LÖVE threads load their source in a fresh state with
+  -- no hooks, so newThread(path) calls are rewritten to fetch patched code via
+  -- MLI_thread_chunk (fixes e.g. Steamodded mod sounds, which run on a thread).
+  do
+    check("MLI_thread_chunk installed", type(_G.MLI_thread_chunk) == "function")
+    local worker = MLI_thread_chunk("engine/worker.lua")
+    check("thread chunk returns patched worker source",
+      type(worker) == "string" and worker:find("WORKER_FLAG = true", 1, true) ~= nil, tostring(worker))
+    check("thread chunk nil for unpatched/unknown path", MLI_thread_chunk("engine/nope.lua") == nil)
+    local host = MLI_thread_chunk("engine/threadhost.lua")
+    check("newThread(path) rewritten to load patched code",
+      type(host) == "string" and host:find("MLI_thread_chunk(", 1, true) ~= nil, tostring(host))
   end
 
   -- run() loads original main, applies main.lua patch (copy append), executes

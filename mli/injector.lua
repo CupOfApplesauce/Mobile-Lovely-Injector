@@ -79,6 +79,28 @@ local function normalize_path(path)
   return (path:gsub("\\", "/"):gsub("^%./", ""):gsub("^/", ""))
 end
 
+-- ---- thread-aware patching ----------------------------------------------
+-- LÖVE threads run in their OWN Lua state, where our loader hooks are not
+-- installed -- so a thread that does love.thread.newThread('engine/X.lua')
+-- loads the UNPATCHED X.lua and misses every mod patch (native lovely avoids
+-- this by hooking at the C loadbuffer level, which is shared across states).
+-- Balatro's sound/save/http managers are threads, and Steamodded patches all
+-- three (e.g. mod sound playback). We rewrite newThread calls that take a
+-- literal file path so the thread loads our PATCHED source instead. The global
+-- MLI_thread_chunk (installed in init) returns a FileData of the patched file.
+local function rewrite_thread_creators(source)
+  if not source:find("newThread", 1, true) then return source end
+  return (source:gsub("love%.thread%.newThread(%b())", function(args)
+    local inner = args:sub(2, -2)
+    local trimmed = (inner:gsub("^%s+", ""):gsub("%s+$", ""))
+    if trimmed:match("^'[^']+%.lua'$") or trimmed:match('^"[^"]+%.lua"$') then
+      return ("love.thread.newThread((MLI_thread_chunk and MLI_thread_chunk(%s)) or %s)")
+        :format(inner, inner)
+    end
+    return "love.thread.newThread" .. args
+  end))
+end
+
 -- ---- dumping -------------------------------------------------------------
 local function dump_patched(target, source)
   if not (love and love.filesystem and love.filesystem.write) then return end
@@ -160,6 +182,9 @@ local function load_patched(path)
     return state.orig_load(path)
   end
 
+  -- Make any threads this file spawns load patched code too (see above).
+  patched = rewrite_thread_creators(patched)
+
   log.info("patched %s (%d patch set)", target, #patches)
   local chunk, err = raw_loadstring(patched, "@" .. path)
   if not chunk then
@@ -170,6 +195,7 @@ local function load_patched(path)
              target, tostring(err))
     patched = engine.apply_safe(target, source, patches, { vars = state.vars },
                                 function(s) return (raw_loadstring(s)) end)
+    patched = rewrite_thread_creators(patched)
     chunk, err = raw_loadstring(patched, "@" .. path)
   end
 
@@ -416,6 +442,32 @@ function injector.init(opts)
   state.patches_by_target = result.patches_by_target
   state.vars = result.vars
   state.dump = result.dump or opts.dump or false
+
+  -- Installed globally so rewritten love.thread.newThread(path) calls can fetch
+  -- a PATCHED copy of the thread's source (threads run in their own Lua state
+  -- without our hooks). Returns a FileData of the patched file, or nil to let
+  -- the caller fall back to the original path.
+  _G.MLI_thread_chunk = function(path)
+    if type(path) ~= "string" then return nil end
+    local target = normalize_path(path)
+    local patches = state.patches_by_target[target]
+    if not patches then return nil end
+    local source = state.fs.read(path)
+    if not source then return nil end
+    local ok, patched = pcall(engine.apply, target, source, patches, { vars = state.vars })
+    if not ok or type(patched) ~= "string" then return nil end
+    if not raw_loadstring(patched, "@" .. path) then
+      patched = engine.apply_safe(target, source, patches, { vars = state.vars },
+                                  function(s) return (raw_loadstring(s)) end)
+    end
+    patched = rewrite_thread_creators(patched)   -- in case the thread spawns threads
+    log.info("thread chunk: serving patched %s (%d patches)", target, #patches)
+    if love and love.filesystem and love.filesystem.newFileData then
+      local ok2, fd = pcall(love.filesystem.newFileData, patched, path)
+      if ok2 and fd then return fd end
+    end
+    return patched
+  end
 
   -- Patched-file cache: first boot patches and writes results to the save dir;
   -- later boots load the patched files directly (turning a multi-minute boot
