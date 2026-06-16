@@ -121,11 +121,17 @@ function toml.parse(text)
   local function read_multiline(open, line, start)
     local close = open
     local rest = line:sub(start + #open)
-    -- Same-line close: content runs up to the LAST closing delimiter on the
-    -- line. TOML allows up to two quote characters of content immediately
-    -- before the closing delimiter (e.g. '''a = '''''  ->  content "a = ''").
-    -- A greedy capture finds the final delimiter rather than the first.
-    local same = rest:match("^(.*)" .. close .. "%s*$")
+    -- Does a line close the string here? A multiline string ends at its closing
+    -- delimiter; the remainder of that line may be whitespace OR a `# comment`
+    -- (both legal TOML). Content runs up to the LAST closing delimiter so up to
+    -- two quote characters of content immediately before it are preserved
+    -- (e.g. '''a = '''''  ->  content "a = ''").
+    local function closes(s)
+      return s:match("^(.*)" .. close .. "%s*$")
+          or s:match("^(.*)" .. close .. "%s*#")
+    end
+    -- Same-line close (e.g.  key = '''pattern'''  # trailing comment).
+    local same = closes(rest)
     if same then
       return same, i
     end
@@ -133,7 +139,7 @@ function toml.parse(text)
     local j = i + 1
     while j <= n do
       local l = lines[j]
-      local c = l:match("^(.*)" .. close .. "%s*$")
+      local c = closes(l)
       if c then
         collected[#collected + 1] = c
         local value = table.concat(collected, "\n")

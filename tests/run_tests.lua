@@ -153,6 +153,22 @@ plain = '''hello'''
   check("trailing 2-quote content kept", doc.a.p == "args.current_prompt_text = ''", "["..tostring(doc.a.p).."]")
   check("trailing 1-quote-pair content kept", doc.a.q == "text ~= ''", "["..tostring(doc.a.q).."]")
   check("plain multiline literal unaffected", doc.a.plain == "hello", "["..tostring(doc.a.plain).."]")
+
+  -- A single-line triple-quoted string may be followed by a `# comment`; the
+  -- closing delimiter must be recognized even with the comment, and following
+  -- keys must still parse. Regression for SMODS booster.toml's create_card
+  -- patch (Pokermon Jumbo Pocket Pack crash: card.lua nil card on pack open).
+  local doc2 = toml.parse([==[
+[b]
+pattern = '''if x then''' # possibly target something else
+position = "at"
+payload = "y"
+also = """basic delim""" # trailing comment too
+]==])
+  check("triple-quote close before trailing comment", doc2.b.pattern == "if x then", "["..tostring(doc2.b.pattern).."]")
+  check("key after commented triple-quote parses", doc2.b.position == "at", "["..tostring(doc2.b.position).."]")
+  check("payload after commented triple-quote parses", doc2.b.payload == "y", "["..tostring(doc2.b.payload).."]")
+  check('"""-delimited close before comment', doc2.b.also == "basic delim", "["..tostring(doc2.b.also).."]")
 end
 
 -- ---------------------------------------------------------------------------
