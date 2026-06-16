@@ -416,6 +416,13 @@ payload = "MAIN_APPEND_MARKER = require('testmod.greet')"
 source = "modules/greet.lua"
 name = "testmod.greet"
 before = "main.lua"
+
+[[patches]]
+[patches.pattern]
+target = '=[SMODS _ "src/demo.lua"]'
+pattern = "local marker = false"
+position = "at"
+payload = "local marker = true"
 ]==],
   ["Mods/TestMod/modules/greet.lua"] = [[return "hello-from-module"]],
 }
@@ -493,6 +500,28 @@ do
   FS["Mods/TestMod/lovely2.toml"] = nil -- (no extra patches)
   local okreq = pcall(require, "engine/object")
   check("slash-style require resolves via searcher", okreq and ENGINE_OBJECT_LOADED == true)
+
+  -- global load/loadstring hook: frameworks (Steamodded) compile their own
+  -- source via load(src, '=[SMODS _ "..."]'); the chunk name is our only handle,
+  -- so patches targeting that name must apply through the hooked loaders.
+  do
+    local demo = 'local marker = false\nreturn marker'
+    local cn = '=[SMODS _ "src/demo.lua"]'
+    -- loadstring takes a string on both lua5.1 and luajit (the game's runtime).
+    if loadstring then
+      local f2 = loadstring(demo, cn)
+      check("global loadstring() hook patches SMODS-style chunk", type(f2) == "function" and f2() == true)
+      local f3 = loadstring(demo, '=[SMODS _ "src/untouched.lua"]')
+      check("global loadstring() leaves non-targeted chunks unchanged", f3() == false)
+    end
+    -- `load` only accepts a string on LuaJIT/5.2+ (lua5.1's load wants a reader
+    -- function). Steamodded loads its src via load(string, ...) on LuaJIT.
+    local ok, probe = pcall(load, "return true")
+    if ok and type(probe) == "function" then
+      local f1 = load(demo, cn)
+      check("global load() hook patches SMODS-style chunk", type(f1) == "function" and f1() == true)
+    end
+  end
 
   -- run() loads original main, applies main.lua patch (copy append), executes
   injector.run()

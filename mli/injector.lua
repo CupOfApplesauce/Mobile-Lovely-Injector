@@ -18,9 +18,16 @@ local log        = require("mli.log")
 local engine     = require("mli.patch_engine")
 local mod_loader = require("mli.mod_loader")
 
+-- Raw references to the Lua loaders, captured before we hook the globals.
+-- Internal compilation MUST use these so that (a) we never re-patch source we
+-- have already patched, and (b) hooking the global `load`/`loadstring` cannot
+-- recurse back into the injector.
+local raw_load = _G.load
+local raw_loadstring = _G.loadstring or _G.load
+
 local injector = {}
 
-injector.VERSION = "0.1.0"
+injector.VERSION = "0.2.0"
 injector.ORIGINAL_MAIN = "mli/main_original.lua"
 injector.DUMP_DIR = "mli/dump"
 
@@ -114,7 +121,7 @@ local function load_from_cache(target, path)
   if not cp or not (love and love.filesystem) then return nil end
   local ok, cached = pcall(function() return love.filesystem.read(cp) end)
   if not (ok and cached) then return nil end
-  local chunk = loadstring(cached, "@" .. path)
+  local chunk = raw_loadstring(cached, "@" .. path)
   if chunk then
     log.info("cache hit: %s", target)
     return chunk
@@ -154,7 +161,7 @@ local function load_patched(path)
   end
 
   log.info("patched %s (%d patch set)", target, #patches)
-  local chunk, err = loadstring(patched, "@" .. path)
+  local chunk, err = raw_loadstring(patched, "@" .. path)
   if not chunk then
     -- A patch produced invalid Lua. Rather than discard ALL patches for this
     -- file (which would drop critical ones like Steamodded's init injection),
@@ -162,8 +169,8 @@ local function load_patched(path)
     log.warn("patched %s did not compile (%s); re-applying patches individually",
              target, tostring(err))
     patched = engine.apply_safe(target, source, patches, { vars = state.vars },
-                                function(s) return (loadstring(s)) end)
-    chunk, err = loadstring(patched, "@" .. path)
+                                function(s) return (raw_loadstring(s)) end)
+    chunk, err = raw_loadstring(patched, "@" .. path)
   end
 
   if state.dump then pcall(dump_patched, target, patched) end
@@ -175,6 +182,36 @@ local function load_patched(path)
   end
   write_cache(target, patched)        -- speed up the next boot
   return chunk
+end
+
+-- Patch a chunk identified by its (load/loadstring) chunk name. Frameworks
+-- like Steamodded compile their own source via `load(src, '=[SMODS _ "..."]')`
+-- rather than love.filesystem.load, so the only handle we get on those files is
+-- the chunk name. Native lovely matches chunk names at the C loadbuffer level;
+-- we approximate it by matching the name against our patch targets. Mirrors
+-- lovely's `needs_patching` (it strips a leading '@' before comparing). Returns
+-- the (possibly patched) source string; non-matching chunks pass through.
+local function patch_by_chunkname(src, chunkname)
+  if type(src) ~= "string" or type(chunkname) ~= "string" then return src end
+  local patches = state.patches_by_target[chunkname]
+  if not patches then
+    local stripped = chunkname:gsub("^@", "")
+    patches = state.patches_by_target[stripped]
+  end
+  if not patches then return src end
+  local ok, patched = pcall(engine.apply, chunkname, src, patches, { vars = state.vars })
+  if not ok then
+    log.error("failed to patch chunk %s: %s", chunkname, tostring(patched))
+    return src
+  end
+  if not raw_loadstring(patched, chunkname) then
+    -- a patch produced invalid Lua; keep only the patches that stay compilable
+    patched = engine.apply_safe(chunkname, src, patches, { vars = state.vars },
+                                function(s) return (raw_loadstring(s)) end)
+  end
+  log.info("patched chunk %s (%d patch set)", chunkname, #patches)
+  pcall(public_dump, chunkname, patched)
+  return patched
 end
 
 -- ---- loader hooks --------------------------------------------------------
@@ -204,6 +241,22 @@ local function install_hooks()
   state.searcher = lovely_searcher
   -- insert after package.preload (index 1) so preload still wins
   table.insert(searchers, 2, lovely_searcher)
+
+  -- 3) Wrap the global load/loadstring so chunks that frameworks compile
+  --    themselves (Steamodded's src/*.lua, mod files loaded via `load`) are
+  --    patched by chunk name. Non-matching chunks are passed straight through.
+  state.orig_global_load = _G.load
+  _G.load = function(chunk, chunkname, ...)
+    if type(chunk) == "string" then chunk = patch_by_chunkname(chunk, chunkname) end
+    return state.orig_global_load(chunk, chunkname, ...)
+  end
+  if _G.loadstring then
+    state.orig_global_loadstring = _G.loadstring
+    _G.loadstring = function(s, chunkname)
+      if type(s) == "string" then s = patch_by_chunkname(s, chunkname) end
+      return state.orig_global_loadstring(s, chunkname)
+    end
+  end
 end
 
 -- Restore the original loaders. Used by the shim's fallback so that, if the
@@ -215,6 +268,8 @@ function injector.uninstall_hooks()
   if state.orig_load and love and love.filesystem then
     love.filesystem.load = state.orig_load
   end
+  if state.orig_global_load then _G.load = state.orig_global_load; state.orig_global_load = nil end
+  if state.orig_global_loadstring then _G.loadstring = state.orig_global_loadstring; state.orig_global_loadstring = nil end
   local searchers = package.loaders or package.searchers
   if state.searcher and searchers then
     for i, s in ipairs(searchers) do
@@ -246,7 +301,9 @@ local function compile_module(m)
       log.error("failed to patch module %s: %s", m.name, tostring(patched))
     end
   end
-  local chunk, err = loadstring(src, chunkname)
+  -- raw_loadstring: the module-source patches above are already applied, and
+  -- this chunk name IS a patch target, so the hooked loadstring would re-patch.
+  local chunk, err = raw_loadstring(src, chunkname)
   if not chunk then return nil, "compile error: " .. tostring(err) end
   return chunk
 end
@@ -453,13 +510,13 @@ function injector.run()
   local patches = state.patches_by_target["main.lua"]
   if patches then
     local ok, patched = pcall(engine.apply, "main.lua", source, patches, { vars = state.vars })
-    if ok and patched and loadstring(patched) then
+    if ok and patched and raw_loadstring(patched) then
       source = patched
       log.info("applied %d patch(es) to main.lua", #patches)
     elseif ok and patched then
       log.warn("patched main.lua did not compile; re-applying patches individually")
       source = engine.apply_safe("main.lua", source, patches, { vars = state.vars },
-                                 function(s) return (loadstring(s)) end)
+                                 function(s) return (raw_loadstring(s)) end)
     else
       log.error("failed to patch main.lua: %s", tostring(patched))
     end
@@ -467,7 +524,7 @@ function injector.run()
   end
   pcall(public_dump, "main.lua", source)
 
-  local chunk, err = loadstring(source, "@main.lua")
+  local chunk, err = raw_loadstring(source, "@main.lua")
   if not chunk then
     error("[mli] compile error in main.lua: " .. tostring(err))
   end

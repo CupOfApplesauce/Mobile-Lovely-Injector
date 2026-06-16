@@ -1,0 +1,34 @@
+# SmodsColourGuard — a tiny safety patch for Steamodded's tooltip renderer.
+#
+# Steamodded's localize_box (src/utils.lua) builds tooltip colours with
+#   part.control.V and args.vars.colours[tonumber(part.control.V)]
+# When a localization string uses a {V:n}/{B:n} colour-index control code but
+# the caller passes no `vars.colours` table, `args.vars.colours` is nil and the
+# index access errors. Pokermon used to guard this in functions/misc_functions
+# (`colour = ... or not part.control.C and args.text_colour or loc_colour(...)`),
+# but newer Steamodded refactored that whole block into SMODS.localize_box, so
+# the old guard no longer has anything to attach to — the unguarded access moved
+# into Steamodded's own source. This mod re-adds the `args.vars.colours and`
+# short-circuit in the new location.
+#
+# Drop this folder into the game's Mods/ folder (alongside Steamodded). It is
+# harmless with or without any content mod installed.
+#
+# NOTE: patching Steamodded's own source requires the injector's global
+# load()/loadstring() hook (Steamodded compiles src/*.lua via
+# `load(src, '=[SMODS _ "..."]')`), present since injector 0.2.0.
+
+[manifest]
+version = "1.0.0"
+# Run after Steamodded's own patches so we guard the final form of the line.
+priority = 100
+
+# Guard every `<cond> and args.vars.colours[tonumber(...)]` against a nil
+# colours table. Replacing the literal substring also covers all occurrences
+# (bg_col, text_col, and the inline-break colour) in one patch.
+[[patches]]
+[patches.regex]
+target = '=[SMODS _ "src/utils.lua"]'
+position = "at"
+pattern = 'and args\.vars\.colours\[tonumber\('
+payload = "and args.vars.colours and args.vars.colours[tonumber("
