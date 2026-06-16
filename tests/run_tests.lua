@@ -475,6 +475,50 @@ payload = "X"
   FS["Mods/OrderMod/lovely.toml"] = nil
 end
 
+-- Disabling mods: Steamodded's in-game toggle writes <root>/lovely/blacklist.txt
+-- (folder names) and/or a .lovelyignore file in the mod folder; the loader must
+-- skip those mods' patches entirely, exactly like native lovely.
+do
+  local function mk(modname, target)
+    FS["Mods/" .. modname .. "/lovely.toml"] = ([==[
+[[patches]]
+[patches.pattern]
+target = "%s"
+pattern = "X"
+position = "after"
+payload = "Y"
+]==]):format(target)
+  end
+  mk("EnabledMod", "en.lua")
+  mk("BlacklistedMod", "bl.lua")
+  mk("IgnoredMod", "ig.lua")
+  FS["Mods/lovely/blacklist.txt"] = "# disabled mods\nBlacklistedMod\n"
+  FS["Mods/IgnoredMod/.lovelyignore"] = ""
+
+  local result = mod_loader.load(fs_adapter, { "Mods" })
+  local enabled = {}
+  for _, m in ipairs(result.mods) do enabled[m] = true end
+  local disabled = {}
+  for _, m in ipairs(result.disabled) do disabled[m] = true end
+  check("blacklist.txt: enabled mod still loads", enabled["EnabledMod"] == true)
+  check("blacklist.txt: listed mod is skipped", enabled["BlacklistedMod"] ~= true and disabled["BlacklistedMod"] == true)
+  check(".lovelyignore: mod with marker file is skipped", enabled["IgnoredMod"] ~= true and disabled["IgnoredMod"] == true)
+  check("disabled mods contribute no patches",
+    result.patches_by_target["bl.lua"] == nil and result.patches_by_target["ig.lua"] == nil
+      and result.patches_by_target["en.lua"] ~= nil)
+
+  -- The cache signature must differ once a mod is disabled (patch set changed).
+  local sig_with_blacklist = result.signature
+  FS["Mods/lovely/blacklist.txt"] = nil
+  FS["Mods/IgnoredMod/.lovelyignore"] = nil
+  local sig_all_enabled = mod_loader.load(fs_adapter, { "Mods" }).signature
+  check("cache signature changes when the enabled set changes", sig_with_blacklist ~= sig_all_enabled)
+
+  for _, m in ipairs({ "EnabledMod", "BlacklistedMod", "IgnoredMod" }) do
+    FS["Mods/" .. m .. "/lovely.toml"] = nil
+  end
+end
+
 local injector = require("mli.injector")
 do
   injector.init({ fs = fs_adapter, mod_roots = { "Mods" }, log_level = "error" })

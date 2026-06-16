@@ -23,6 +23,29 @@ local function normalize_target(t)
   return t
 end
 
+-- A mod is disabled (its patches skipped) the same two ways native lovely
+-- supports, both written into the mod root by Steamodded's in-game toggle:
+--   * an entry in `<root>/lovely/blacklist.txt` (folder names, one per line;
+--     blank lines and `#` comments ignored), and
+--   * a `.lovelyignore` file inside the mod's own folder.
+-- Returns a set of blacklisted folder names for one mod root.
+local function read_blacklist(fs, root)
+  local set = {}
+  local text = fs.read(root .. "/lovely/blacklist.txt")
+  if not text then return set end
+  for line in (text .. "\n"):gmatch("(.-)\n") do
+    line = line:gsub("\r$", "")
+    if line ~= "" and line:sub(1, 1) ~= "#" then set[line] = true end
+  end
+  return set
+end
+
+local function mod_is_disabled(fs, mod_dir, name, blacklist)
+  if blacklist[name] then return true end
+  if fs.exists(mod_dir .. "/.lovelyignore") then return true end
+  return false
+end
+
 -- Collect the toml patch-file paths contributed by a single mod directory.
 local function mod_toml_files(fs, mod_dir)
   local files = {}
@@ -97,7 +120,8 @@ function mod_loader.load(fs, mod_roots)
     modules = {},
     vars = {},
     dump = false,
-    mods = {},       -- names of discovered mods
+    mods = {},       -- names of discovered (enabled) mods
+    disabled = {},   -- names of mods skipped via blacklist.txt / .lovelyignore
   }
 
   -- Content signature of the patch set, used as a cache key so patched files
@@ -110,9 +134,14 @@ function mod_loader.load(fs, mod_roots)
 
   for _, root in ipairs(mod_roots) do
     if fs.is_dir(root) then
+      local blacklist = read_blacklist(fs, root)
       for _, name in ipairs(fs.list(root)) do
         local mod_dir = root .. "/" .. name
         if fs.is_dir(mod_dir) then
+          if mod_is_disabled(fs, mod_dir, name, blacklist) then
+            out.disabled[#out.disabled + 1] = name
+            log.info("mod '%s' is disabled (blacklist/.lovelyignore), skipping", name)
+          else
           local files = mod_toml_files(fs, mod_dir)
           if #files > 0 then
             out.mods[#out.mods + 1] = name
@@ -135,6 +164,7 @@ function mod_loader.load(fs, mod_roots)
                 end
               end
             end
+          end
           end
         end
       end
@@ -189,6 +219,7 @@ function mod_loader.load(fs, mod_roots)
     vars = out.vars,
     dump = out.dump,
     mods = out.mods,
+    disabled = out.disabled,
     signature = out.signature,
   }
 end
