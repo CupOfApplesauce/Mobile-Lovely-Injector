@@ -1,0 +1,23 @@
+# AtlasMemFix - free the redundant CPU-side copy of every atlas.
+#
+# Steamodded loads each atlas as both a CPU bitmap (self.image_data) and a GPU
+# texture (self.image), but never reads image_data again after the texture is
+# made. On mobile (unified memory) that doubles each atlas's RAM cost for no
+# benefit. This releases image_data right after the texture is created.
+#
+# Safe with NO visual change. Helpful for big content mods (e.g. Pokermon) on
+# memory-tight phones. Drop this folder in your Mods folder.
+#
+# Requires injector >= 0.2.0 (patches Steamodded's own src via the load hook).
+
+[manifest]
+version = "1.0.0"
+priority = 100
+
+[[patches]]
+[patches.pattern]
+target = '=[SMODS _ "src/game_object.lua"]'
+match_indent = true
+position = 'after'
+pattern = 'G[self.atlas_table][self.key_noloc or self.key] = self'
+payload = 'if self.image_data then if self.image_data.release then self.image_data:release() end self.image_data = nil end'
