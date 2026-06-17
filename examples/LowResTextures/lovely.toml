@@ -31,11 +31,8 @@ position = "at"
 pattern = "self.SETTINGS.GRAPHICS.texture_scaling = self.SETTINGS.GRAPHICS.texture_scaling or 2"
 payload = "self.SETTINGS.GRAPHICS.texture_scaling = 1"
 
-# Drop mipmap generation (~33% extra texture RAM) for atlases.
-[[patches]]
-[patches.pattern]
-target = '=[SMODS _ "src/game_object.lua"]'
-match_indent = true
-position = "at"
-pattern = "{ mipmaps = true, dpiscale = G.SETTINGS.GRAPHICS.texture_scaling })"
-payload = "{ mipmaps = false, dpiscale = G.SETTINGS.GRAPHICS.texture_scaling })"
+# NOTE: we deliberately do NOT disable mipmap generation. Steamodded calls
+# image:setMipmapFilter(...) on atlases, which errors on a non-mipmapped
+# texture ("Non-mipmapped texture cannot have mipmap filtering"). The 1x switch
+# above is the large win; the extra ~25% from dropping mipmaps isn't worth that
+# breakage on top of it.
