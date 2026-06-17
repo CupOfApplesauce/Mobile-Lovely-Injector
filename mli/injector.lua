@@ -207,6 +207,12 @@ local function load_patched(path)
     return state.orig_load(path)
   end
   write_cache(target, patched)        -- speed up the next boot
+  -- First boot patches ~30 files (some huge); reclaim each file's source,
+  -- patched text and engine scratch before requiring the next so peak memory
+  -- stays low on memory-tight devices. The compiled `chunk` is returned and
+  -- survives. Skipped if a host opts out (tests).
+  patched, source = nil, nil
+  if collectgarbage then collectgarbage("collect") end
   return chunk
 end
 

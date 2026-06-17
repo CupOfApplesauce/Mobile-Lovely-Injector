@@ -95,6 +95,21 @@ local function apply_pattern(lines, patch, vars)
     return true
   end
 
+  -- Push a (possibly multi-line) payload block as INDIVIDUAL line entries, so
+  -- `out` stays a flat array of single lines. This keeps the result usable as a
+  -- line array by the next pattern patch (which must be able to match lines
+  -- introduced by an earlier payload), matching the old split-per-patch
+  -- behavior while letting engine.apply avoid re-splitting between patches.
+  local function push_block(out, block)
+    local start = 1
+    while true do
+      local nl = block:find("\n", start, true)
+      if not nl then out[#out + 1] = block:sub(start); break end
+      out[#out + 1] = block:sub(start, nl - 1)
+      start = nl + 1
+    end
+  end
+
   local out = {}
   local i, n = 1, #lines
   while i <= n do
@@ -104,13 +119,13 @@ local function apply_pattern(lines, patch, vars)
       local indent = match_indent and leading_indent(lines[i]) or ""
       local block = format_payload(payload, indent, nil)
       if position == "before" then
-        out[#out + 1] = block
+        push_block(out, block)
         for k = 0, plen - 1 do out[#out + 1] = lines[i + k] end
       elseif position == "at" then
-        out[#out + 1] = block            -- replace the matched window
+        push_block(out, block)           -- replace the matched window
       else -- "after"
         for k = 0, plen - 1 do out[#out + 1] = lines[i + k] end
-        out[#out + 1] = block
+        push_block(out, block)
       end
       i = i + plen                       -- windows do not overlap
     else
@@ -364,17 +379,32 @@ function engine.apply(target, source, patches, opts)
   local read_source = opts.read_source or function() return nil end
   local stats = { applied = 0, skipped = 0, errors = 0 }
 
+  -- Keep the working buffer as a line ARRAY across consecutive `pattern`
+  -- patches instead of splitting+concatenating the whole file once per patch.
+  -- Files like card.lua carry ~250 patches, and the repeated full-file string
+  -- churn was a large source of transient memory and boot time on memory-tight
+  -- devices. We convert to a string only for copy/regex patches (which operate
+  -- on raw text) and once at the end. split_lines + concat("\n") round-trips
+  -- losslessly, so the result is byte-identical to splitting per patch.
+  local lines = nil                       -- non-nil => current form; `source` stale
+  local function to_string()
+    if lines then source = table.concat(lines, "\n"); lines = nil end
+    return source
+  end
+  local function to_lines()
+    if not lines then lines = split_lines(source) end
+    return lines
+  end
+
   for _, patch in ipairs(patches) do
     local kind = patch.kind
     local ok, result, applied = pcall(function()
       if kind == "pattern" then
-        local lines = split_lines(source)
-        local out, n = apply_pattern(lines, patch, vars)
-        return table.concat(out, "\n"), n
+        return apply_pattern(to_lines(), patch, vars)        -- result is a line array
       elseif kind == "regex" then
-        return apply_regex(source, patch, vars)
+        return apply_regex(to_string(), patch, vars)         -- result is a string
       elseif kind == "copy" then
-        return apply_copy(source, patch, vars, patch._read_source or read_source), 1
+        return apply_copy(to_string(), patch, vars, patch._read_source or read_source), 1
       else
         error("unknown patch kind '" .. tostring(kind) .. "'")
       end
@@ -388,10 +418,14 @@ function engine.apply(target, source, patches, opts)
                tostring(patch.pattern):sub(1, 80))
     else
       stats.applied = stats.applied + 1
-      source = result
+      if kind == "pattern" then
+        lines = result                    -- stay in line form for the next pattern
+      else
+        source = result; lines = nil
+      end
     end
   end
-  return source, stats
+  return to_string(), stats
 end
 
 -- engine.apply_safe(target, source, patches, opts, compile)
