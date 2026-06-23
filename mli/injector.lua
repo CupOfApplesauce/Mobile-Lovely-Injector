@@ -27,7 +27,7 @@ local raw_loadstring = _G.loadstring or _G.load
 
 local injector = {}
 
-injector.VERSION = "0.2.0"
+injector.VERSION = "0.3.0"
 injector.ORIGINAL_MAIN = "mli/main_original.lua"
 injector.DUMP_DIR = "mli/dump"
 
@@ -316,16 +316,15 @@ end
 -- target the injected module via the chunk name `=[lovely <name> "<rel>"]`.
 -- We compile modules with exactly that chunk name so (a) those source patches
 -- apply and (b) tracebacks read the way SMODS' crash handler expects.
-local function compile_module(m)
+local function module_source(m)
   local src = (m.read and m.read()) or state.fs.read(m.source)
   if not src then return nil, "source not found at " .. tostring(m.source) end
   local chunkname = string.format('=[lovely %s "%s"]', m.name, m.rel or m.source)
   -- Other patches can target this module's source by the same string (lovely's
   -- module chunk name, including the leading '=').
-  local lovely_target = chunkname
-  local patches = state.patches_by_target[lovely_target]
+  local patches = state.patches_by_target[chunkname]
   if patches then
-    local ok, patched = pcall(engine.apply, lovely_target, src, patches, { vars = state.vars })
+    local ok, patched = pcall(engine.apply, chunkname, src, patches, { vars = state.vars })
     if ok then
       src = patched
       log.debug("patched module source %s (%d patch set)", m.name, #patches)
@@ -333,11 +332,42 @@ local function compile_module(m)
       log.error("failed to patch module %s: %s", m.name, tostring(patched))
     end
   end
+  return src, chunkname
+end
+
+local function compile_module(m)
+  local src, chunkname = module_source(m)
+  if not src then return nil, chunkname end       -- chunkname holds the error here
   -- raw_loadstring: the module-source patches above are already applied, and
   -- this chunk name IS a patch target, so the hooked loadstring would re-patch.
   local chunk, err = raw_loadstring(src, chunkname)
   if not chunk then return nil, "compile error: " .. tostring(err) end
   return chunk
+end
+
+-- Mirror module-patch sources into the LÖVE save directory so they can be
+-- `require`d from OTHER Lua states -- specifically background threads. A LÖVE
+-- thread is a fresh state with no `package.preload`, and (after it does
+-- `require("love.filesystem")`) it can only resolve `require` through
+-- love.filesystem's search path, which includes the save dir but NOT our
+-- external mods folder. Steamodded registers libs like `json` only into the
+-- main state's preload, so a mod's networking/worker thread doing
+-- `require("json")` would fail. Writing those modules' source to the save dir
+-- (write dir) lets such requires resolve. The main state still uses
+-- package.preload (it has priority), so this only affects fresh states.
+local function mirror_modules_to_savedir(modules)
+  if not (love and love.filesystem and love.filesystem.write) then return end
+  for _, m in ipairs(modules) do
+    if m.name then
+      local path = (m.name:gsub("%.", "/")) .. ".lua"
+      local src = module_source(m)
+      if src then
+        local dir = path:match("^(.*)/[^/]+$")
+        if dir and love.filesystem.createDirectory then pcall(love.filesystem.createDirectory, dir) end
+        pcall(love.filesystem.write, path, src)
+      end
+    end
+  end
 end
 
 -- Register all module patches into package.preload (lazy). Modules that other
@@ -541,6 +571,7 @@ function injector.init(opts)
   end
 
   register_modules(result.module_patches)
+  mirror_modules_to_savedir(result.module_patches)  -- make mod libs (json, ...) requireable from threads
   run_load_now(result.module_patches)
 
   state.initialized = true

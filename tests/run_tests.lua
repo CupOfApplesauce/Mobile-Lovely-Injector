@@ -560,6 +560,12 @@ do
   check("module preload registered", package.preload["testmod.greet"] ~= nil)
   check("module loads correct value", require("testmod.greet") == "hello-from-module")
 
+  -- module source mirrored into the save dir so a fresh state (thread) can
+  -- require it via love.filesystem (name.with.dots -> name/with/dots.lua).
+  check("module mirrored to save dir for thread require",
+    FS["testmod/greet.lua"] ~= nil and FS["testmod/greet.lua"]:find("hello-from-module", 1, true) ~= nil,
+    tostring(FS["testmod/greet.lua"]))
+
   -- love.filesystem.load was wrapped: loading game.lua should be patched
   local chunk = love.filesystem.load("game.lua")
   check("game.lua load returns chunk", type(chunk) == "function")
