@@ -1,0 +1,13 @@
+{
+  "id": "AtlasMemFix",
+  "name": "Atlas Memory Fix",
+  "display_name": "Atlas Memory Fix",
+  "author": ["CupOfApplesauce"],
+  "description": "Frees the redundant CPU-side copy of each Steamodded atlas once its GPU texture is built. Lowers memory use with no visual change. Safe to keep installed everywhere.",
+  "prefix": "amf",
+  "main_file": "main.lua",
+  "priority": 100,
+  "badge_colour": "3A7CA5",
+  "badge_text_colour": "FFFFFF",
+  "version": "1.0.0"
+}

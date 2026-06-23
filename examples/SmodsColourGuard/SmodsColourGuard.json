@@ -1,0 +1,13 @@
+{
+  "id": "SmodsColourGuard",
+  "name": "SMODS Colour Guard",
+  "display_name": "SMODS Colour Guard",
+  "author": ["CupOfApplesauce"],
+  "description": "Hardens Steamodded's tooltip renderer against a rare nil-colour crash by guarding the colour lookup in SMODS.localize_box.",
+  "prefix": "scg",
+  "main_file": "main.lua",
+  "priority": 100,
+  "badge_colour": "4CAF50",
+  "badge_text_colour": "FFFFFF",
+  "version": "1.0.0"
+}

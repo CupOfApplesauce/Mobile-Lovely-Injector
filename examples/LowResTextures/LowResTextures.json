@@ -1,0 +1,13 @@
+{
+  "id": "LowResTextures",
+  "name": "Low-Res Textures",
+  "display_name": "Low-Res Textures",
+  "author": ["CupOfApplesauce"],
+  "description": "Forces 1x (half-resolution) textures for the whole game and all mods, cutting texture memory ~4x. For memory-tight phones. Remove to return to full-resolution.",
+  "prefix": "lrt",
+  "main_file": "main.lua",
+  "priority": -100,
+  "badge_colour": "E67E22",
+  "badge_text_colour": "FFFFFF",
+  "version": "1.0.0"
+}
