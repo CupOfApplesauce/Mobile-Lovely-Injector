@@ -4,10 +4,11 @@ This is a specially made Lovely injector for the PC to APK repackage tool for Ba
 1. Inserts Lovely code directly into the apk so that it runs at launch.
 2. Gives Balatro the ability to read mod info from a dedicated "Mods" folder in your mobile device's downloads. No need to root your phone to gain access to the com.balatro data folders that are protected under android security!
 3. Writes MLI reports and game dumps in case you run into errors directly to your device's downloads.
+4. Provides a little pop-up once Smods has been patched detailing what has worked (or what hasn't).
 # Disclaimers!
 This is for Android only! Sorry Apple users. I truly have no idea how to pick apart IOS apps. Also, for Pixel users, I tried my methods on a Google Pixel and ecountered an issue with limited storage access. Something about Pixel phones handle storage security is different than other Android devices. I still haven't found a workaround for this yet so I apologize.
 
-I have not tested full mod compatability and most new mods reveal issues with my MLI system via crashing the game. The mods I have tested and know, as far as I'm aware, work are Pokermon, Multiplayer, and Crpytid (and by extension Amulet). I of course will work on more mod compatability as time goes on, but I figured the best way to know what people would want is to put this out here for others.
+I have not tested full mod compatability and most new mods reveal issues with my MLI system via crashing the game. The mods I have tested and know, as far as I'm aware, work are Steamodded, Pokermon, Multiplayer, and Crpytid (and by extension Amulet). There are some caveats but I will go over those at the end. I, of course, will work on more mod compatability as time goes on, but I figured the best way to know what people would want is to put this out here for others.
 
 These instructions require that you create a new APK from an UNMODDED version of Balatro without any save data transferred over. We will be adding all the necessary mods during this process. You should be able to do this without removing all the mods from your modded PC experience by opting to not transfer save data during the repack, but if you encounter any issues, I'd recommend starting from the beginning and removing mods from PC. I can't guarantee any save data from an existing mobile Balatro repack will survive this process. So if you really want to keep your save data, I recommend changing this version's name (which I'll go over at the end). 
 
@@ -48,7 +49,8 @@ assets/
 ->game.love
 8. You are now free to delete the game.zip and game directory from assets.
 8.5 If you need to rename this version of Balatro to protect the save data of an already existing Balatro repack, this is the time to skip to "Renaming Your APK"
-9. Compile the project and install the game! DO NOT OPEN IT! Just hit "Done". Opening doesn't break anything and it will boot, we're just not finished preparing the mods yet.
+9. Compile the project and install the game!
+You are more than welcome to run the game as is. Just to make sure the game actually boots vanilla. You'll probably see a pop-up that mentions giving all files access to the game. That's detailed in the next segment.
 # Give Balatro All Files Access
 This can be done by going to your setting and searching "All files access". If you do not see Balatro as an option to grant permission, it means that you forgot to change your Android Manifest. Please go back to that section and confirm you have uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/ added.
 
@@ -56,4 +58,8 @@ I promise that I'm not doing anything shady despite how intimidating all files a
 # Mods
 Almost there!
 1. In your device's storage, go to downloads and create a folder named "Mods". This is case sensitive! "mods" will not work!
-2. 
+2. Insert the mods you wish to play with (steamodded required as well as SmodsColourGuard). Currently, Cryptid (requires Amulet which is working as well), Pokermon, Multiplayer, and some of my own personal mods that make the game work under certain conditions.
+3. While it may not be required on your device, I highly recommend downloading AtlasMemFix and LowResTextures mods and keeping them in your back pocket for later.
+4. With the mods installed and all files access granted, you should be ready to restart the game (always fully close the game before trying to return).
+The intial boot sequence after a new installation/update and changing the mod folders always results in a long boot time (sometimes upwards of 5 minutes in my experience). This is totally normal as the phone is trying to patch everything together and create a cahce. Each subsequent boot has a significantly faster boot time. Pretty much immediate. Even with all the mods installed.
+If you are experiencing an issue where you stare at a black screen for a while and it suddenly force closes, please use the mentioned Atlas and LowRes mods. Your device cannot handle the memory demands that the initial boot requires. For reference, I did this on my Galaxy S22 Ultra and Galaxy Tab S10. The mods are created to lighten the burden and make sure the game can actually complete that initial boot on my phone. My tablet did not require the memory mods, but they never hurt to have anyways.
