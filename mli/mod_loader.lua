@@ -18,7 +18,7 @@ local log  = require("mli.log")
 local mod_loader = {}
 
 local function normalize_target(t)
-  if not t then return t end
+  if type(t) ~= "string" then return nil end   -- non-string targets handled by caller
   t = t:gsub("\\", "/"):gsub("^%./", ""):gsub("^/", "")
   return t
 end
@@ -72,30 +72,40 @@ local function collect_from_doc(doc, mod_dir, fs, priority, out)
   local read_source = function(rel)
     return fs.read(mod_dir .. "/" .. rel)
   end
+
+  -- A patch's `target` may be a single string OR an array of paths (lovely's
+  -- Target::Single / Target::Multi) -- a multi-target patch applies to EACH
+  -- listed file. Emit one descriptor per target so the rest of the pipeline
+  -- only ever sees a single string target. Non-string targets are skipped with
+  -- a warning rather than crashing the whole loader.
+  local function emit(p, kind)
+    local raw = p.target
+    local list = (type(raw) == "table") and raw or { raw }
+    for _, tgt in ipairs(list) do
+      local norm = normalize_target(tgt)
+      if not norm then
+        log.warn("%s patch with non-string target skipped (%s)", kind, type(tgt))
+      else
+        local d = {}
+        for k, v in pairs(p) do d[k] = v end   -- copy so multi-targets don't share .target
+        d.kind = kind
+        d.target = norm
+        d._priority = priority
+        d._mod_dir = mod_dir                    -- for {{lovely_hack:patch_dir}}
+        if kind == "copy" then d._read_source = read_source end
+        out.targeted[#out.targeted + 1] = d
+      end
+    end
+  end
+
   for _, entry in ipairs(patches) do
     -- each [[patches]] element holds exactly one of these sub-tables
     if entry.pattern then
-      local p = entry.pattern
-      p.kind = "pattern"
-      p.target = normalize_target(p.target)
-      p._priority = priority
-      p._mod_dir = mod_dir          -- for {{lovely_hack:patch_dir}}
-      out.targeted[#out.targeted + 1] = p
+      emit(entry.pattern, "pattern")
     elseif entry.regex then
-      local p = entry.regex
-      p.kind = "regex"
-      p.target = normalize_target(p.target)
-      p._priority = priority
-      p._mod_dir = mod_dir
-      out.targeted[#out.targeted + 1] = p
+      emit(entry.regex, "regex")
     elseif entry.copy then
-      local p = entry.copy
-      p.kind = "copy"
-      p.target = normalize_target(p.target)
-      p._priority = priority
-      p._mod_dir = mod_dir
-      p._read_source = read_source
-      out.targeted[#out.targeted + 1] = p
+      emit(entry.copy, "copy")
     elseif entry.module then
       local m = entry.module
       local rel = m.source

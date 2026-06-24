@@ -583,6 +583,37 @@ name = "srcmod.lib"
   FS["Mods/SrcMod/src/lib.lua"] = nil
 end
 
+-- A patch's `target` may be an ARRAY of paths (lovely Target::Multi): the patch
+-- applies to each listed file. A non-string target must be skipped gracefully,
+-- not crash the loader. Regression for Cryptid's stake.toml multi-target patch
+-- (target = ["functions/common_events.lua", "functions/UI_definitions.lua"])
+-- aborting the whole injector.
+do
+  FS["Mods/MultiTgt/lovely.toml"] = [==[
+[[patches]]
+[patches.pattern]
+target = ["a.lua", "b.lua"]
+pattern = "X"
+position = "after"
+payload = "Y"
+
+[[patches]]
+[patches.pattern]
+target = "c.lua"
+pattern = "Z"
+position = "after"
+payload = "W"
+]==]
+  local ok, result = pcall(mod_loader.load, fs_adapter, { "Mods" })
+  check("loader survives array/odd targets (no crash)", ok, tostring(result))
+  if ok then
+    check("array target applies to first file", (result.patches_by_target["a.lua"] or {})[1] ~= nil)
+    check("array target applies to second file", (result.patches_by_target["b.lua"] or {})[1] ~= nil)
+    check("single string target still works alongside", (result.patches_by_target["c.lua"] or {})[1] ~= nil)
+  end
+  FS["Mods/MultiTgt/lovely.toml"] = nil
+end
+
 local injector = require("mli.injector")
 do
   injector.init({ fs = fs_adapter, mod_roots = { "Mods" }, log_level = "error" })
