@@ -23,3 +23,4 @@ These instructions assume you have already created your APK of Balatro. If you h
 # Android Manifest
 This is pretty straight forward. All you need to do is add this permission line right after the others.
 <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
+This is what allows the game to be able to read and write inside your downloads folder. Skipping the need for rooting your device.
