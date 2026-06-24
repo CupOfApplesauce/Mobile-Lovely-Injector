@@ -628,6 +628,31 @@ do
     FS["testmod/greet.lua"] ~= nil and FS["testmod/greet.lua"]:find("hello-from-module", 1, true) ~= nil,
     tostring(FS["testmod/greet.lua"]))
 
+  -- Mirrored sources get a cross-state global fallback prepended so worker
+  -- threads (fresh Lua states) don't crash on globals a mod's main-state
+  -- bootstrap defines. Amulet patches `json` to call is_big; Multiplayer's
+  -- networking thread requires the mirrored json and would hit a nil is_big.
+  -- The fallback is on the first line (line numbers preserved) and only defines
+  -- the global when absent, so the real Amulet definition always wins.
+  check("mirrored module carries is_big thread fallback",
+    FS["testmod/greet.lua"]:find("if is_big==nil then", 1, true) == 1,
+    tostring(FS["testmod/greet.lua"]))
+  do
+    -- Running the mirrored chunk executes its prelude as a side effect. In a
+    -- state with no is_big it must define a safe one; with a real is_big present
+    -- it must leave it untouched.
+    local loader = loadstring or load
+    local prev = is_big
+    is_big = nil
+    assert(loader(FS["testmod/greet.lua"]))()
+    check("thread fallback defines is_big when absent",
+      type(is_big) == "function" and is_big(5) == false)
+    is_big = function() return "REAL" end
+    assert(loader(FS["testmod/greet.lua"]))()
+    check("real is_big not clobbered by fallback", is_big(5) == "REAL")
+    is_big = prev
+  end
+
   -- love.filesystem.load was wrapped: loading game.lua should be patched
   local chunk = love.filesystem.load("game.lua")
   check("game.lua load returns chunk", type(chunk) == "function")

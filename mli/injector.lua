@@ -27,7 +27,7 @@ local raw_loadstring = _G.loadstring or _G.load
 
 local injector = {}
 
-injector.VERSION = "0.3.2"
+injector.VERSION = "0.3.3"
 injector.ORIGINAL_MAIN = "mli/main_original.lua"
 injector.DUMP_DIR = "mli/dump"
 
@@ -355,6 +355,19 @@ end
 -- `require("json")` would fail. Writing those modules' source to the save dir
 -- (write dir) lets such requires resolve. The main state still uses
 -- package.preload (it has priority), so this only affects fresh states.
+-- Worker threads load these mirrored modules in a FRESH Lua state, so globals
+-- defined by a mod's main-state bootstrap are absent there. Amulet (Talisman)
+-- patches the shared `json` library's encode to call the global `is_big`, which
+-- it defines in talisman/globals.lua -- but that bootstrap never runs in, e.g.,
+-- Multiplayer's networking thread, so `require("json")` there crashes on
+-- `is_big` being nil the moment it encodes anything. We prepend an idempotent
+-- fallback to the MIRRORED source only: it defines the global solely when absent,
+-- so the real Amulet definition (main state, via package.preload) always wins and
+-- the main thread is untouched. Kept on the first line (no added newline) so the
+-- module's traceback line numbers stay correct.
+local THREAD_GLOBAL_FALLBACKS =
+  "if is_big==nil then is_big=function() return false end end "
+
 local function mirror_modules_to_savedir(modules)
   if not (love and love.filesystem and love.filesystem.write) then return end
   for _, m in ipairs(modules) do
@@ -362,6 +375,7 @@ local function mirror_modules_to_savedir(modules)
       local path = (m.name:gsub("%.", "/")) .. ".lua"
       local src = module_source(m)
       if src then
+        src = THREAD_GLOBAL_FALLBACKS .. src
         local dir = path:match("^(.*)/[^/]+$")
         if dir and love.filesystem.createDirectory then pcall(love.filesystem.createDirectory, dir) end
         pcall(love.filesystem.write, path, src)
