@@ -21,6 +21,4 @@ These instructions assume you have already created your APK of Balatro. If you h
 1. Decompile your apk using your preferred tool. Again, I seriously recommend Apktool M. It's the tool I used and allowed me to do this pretty easily from my phone. (I honestly don't know how similar other APK tools are to one another, so I apologize if these instruction are not ubiquitous).
 2. Once your game has been decompiled, you are looking for two things: "AndroidManifest.xml and "game.love". game.love will be located inside the assests folder.
 # Android Manifest
-This is pretty straight forward. All you need to do is add this permission line right after the others.
-<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
-This is what allows the game to be able to read and write inside your downloads folder. Skipping the need for rooting your device.
+This is pretty straight forward. All you need to do is replace your manifest with the one I provide. For transparency, the only difference is that I add one extra line that adds a permission to read and write into your storage. All this does is enable the game to read the "Mods" folder and write MLI reports like I mentioned in "What This Does". "uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/" (Removed <> at beginning and end respectively so that the actual line still appears here on the github page).
