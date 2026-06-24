@@ -27,7 +27,7 @@ local raw_loadstring = _G.loadstring or _G.load
 
 local injector = {}
 
-injector.VERSION = "0.3.0"
+injector.VERSION = "0.3.1"
 injector.ORIGINAL_MAIN = "mli/main_original.lua"
 injector.DUMP_DIR = "mli/dump"
 

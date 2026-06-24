@@ -170,6 +170,27 @@ function mod_loader.load(fs, mod_roots)
       end
     end
   end
+
+  -- Fold the CONTENT of files pulled in by copy/module patches into the
+  -- signature too. The loop above only hashes the .toml files, but a copy
+  -- patch's `sources` (e.g. a mod's bootstrap.lua) and a module patch's source
+  -- are baked into the patched output and cached. Without this, editing such a
+  -- source file would not change the signature, so the patched-file cache would
+  -- keep serving stale output (e.g. an old menu watermark) until a .toml
+  -- happened to change.
+  for _, p in ipairs(out.targeted) do
+    if p.kind == "copy" and p._read_source and type(p.sources) == "table" then
+      for _, rel in ipairs(p.sources) do
+        local c = p._read_source(rel)
+        if c then hash_str(rel); hash_str(c) end
+      end
+    end
+  end
+  for _, m in ipairs(out.modules) do
+    local c = m.read and m.read()
+    if c then hash_str(tostring(m.source)); hash_str(c) end
+  end
+
   out.signature = string.format("%08x", sig)
 
   -- Order patches exactly as lovely-core does (patch/table.rs): the kind

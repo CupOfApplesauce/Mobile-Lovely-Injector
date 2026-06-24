@@ -552,6 +552,37 @@ payload = "Y"
   end
 end
 
+-- The cache signature must also change when a copy/module SOURCE file changes,
+-- not just a .toml -- otherwise editing e.g. a mod's bootstrap.lua leaves the
+-- patched-file cache serving stale output. Regression for the HelloMod menu
+-- watermark persisting after its bootstrap was edited.
+do
+  FS["Mods/SrcMod/lovely.toml"] = [==[
+[[patches]]
+[patches.copy]
+target = "main.lua"
+position = "append"
+sources = ["src/boot.lua"]
+
+[[patches]]
+[patches.module]
+source = "src/lib.lua"
+name = "srcmod.lib"
+]==]
+  FS["Mods/SrcMod/src/boot.lua"] = "BOOT_V1 = true\n"
+  FS["Mods/SrcMod/src/lib.lua"] = "return 1\n"
+  local sig1 = mod_loader.load(fs_adapter, { "Mods" }).signature
+  FS["Mods/SrcMod/src/boot.lua"] = "BOOT_V2 = true\n"   -- edit a copy source only
+  local sig2 = mod_loader.load(fs_adapter, { "Mods" }).signature
+  check("signature changes when a copy source file changes", sig1 ~= sig2, sig1 .. " vs " .. sig2)
+  FS["Mods/SrcMod/src/lib.lua"] = "return 2\n"           -- edit a module source only
+  local sig3 = mod_loader.load(fs_adapter, { "Mods" }).signature
+  check("signature changes when a module source file changes", sig2 ~= sig3, sig2 .. " vs " .. sig3)
+  FS["Mods/SrcMod/lovely.toml"] = nil
+  FS["Mods/SrcMod/src/boot.lua"] = nil
+  FS["Mods/SrcMod/src/lib.lua"] = nil
+end
+
 local injector = require("mli.injector")
 do
   injector.init({ fs = fs_adapter, mod_roots = { "Mods" }, log_level = "error" })
