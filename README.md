@@ -92,6 +92,7 @@ Any mod with a config option that requires a restart (including disabling the mo
 The specific issues I listed above I believe are related to using a different version of SMODS, but this lovely injector was designed using the latest version. I don't believe it will work correctly with any previous version of SMODS.
 
 I have not tested every possible interaction myself. I am only one person. So please don't be afraid to report any issues that you may encounter during your play!
+
+Finally, I recommend running the game with only Smods and Colourguard installed in the Mods folder first. Just to make sure that the actual SMmods framework is running as intended. You could always go all in at once, but if something goes wrong, start from those two mods and add others one at a time.
 # Shoutouts
 I just wanted to take a moment here at the end and give a shoutout to all the people who make modded Balatro and Balatro mobile possible. They are all incredibly talented individuals who created things for the community I could have never dreamed up. Especially to those who created Lovely, Steamodded, and the Balatro Mobile Maker. None of what I did would be possible without them giving me a foundation to work from. It's only thanks to their hard work and the work of all the creators out there that I could even create something like this for you all. I hope you all enjoy! 
-
