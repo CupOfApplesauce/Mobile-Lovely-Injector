@@ -33,7 +33,7 @@ That's it for the manifest!
 1. Convert your "game.love" into "game.zip". This doesn't require any tools. It's as simple as renaming the .love portion to .zip.
 2. Extract your game.zip. I recommend extracting it to "game" or any other dedicated folder to avoid confusion with what's already in assets.
 3. In the extracted zip, locate main.lua and rename it to main_original.lua.
-4. Download the MLI Kit and extract it to a dedicated folder if you haven't already. Copy the contents "main.lua" the "mli" folder and place them directly into the game's root folder.
+4. Download the MLI Kit and extract it to a dedicated folder if you haven't already. Copy the contents "main.lua" and the "mli" folder and place them directly into the game's root folder.
 5. Take "main_original.lua" and put it into the mli folder.
 Your directory should now look something like this:
 game/
