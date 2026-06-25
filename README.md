@@ -19,7 +19,7 @@ Finally, for complete transparency, I made this using Anthropic's Claude coding.
 1. Please read this top to bottom and follow the instructions carefully!
 2. A repackaged version of PC Balatro as an APK. This can be done by using blake502's Balatro Mobile Maker found here. https://github.com/blake502/balatro-mobile-maker
 3. Some way of decompiling and recompiling an APK. I was able to do all of this right from my mobile devices by using Apktool M! https://maximoff.su/apktool/?lang=en (Recommended because I didn't try other tools.)
-4. Steamodded version 1.0.0-BETA-1814a. https://github.com/Steamodded
+4. Steamodded version 1.0.0-BETA-1814a. https://github.com/Steamodded/smods/releases/tag/1.0.0-beta-1814a
 5. Mobile Lovely Injector (MLI).
 6. SmodsColourGuard from the mods starter kit.
 # Getting Started
