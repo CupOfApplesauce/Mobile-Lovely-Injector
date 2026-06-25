@@ -4,7 +4,7 @@ This is a specially made Lovely injector for the PC to APK repackage tool for Ba
 1. Inserts Lovely code directly into the apk so that it runs at launch.
 2. Gives Balatro the ability to read mod info from a dedicated "Mods" folder in your mobile device's downloads. No need to root your phone to gain access to the com.balatro data folders that are protected under android security!
 3. Writes MLI reports and game dumps in case you run into errors directly to your device's downloads.
-4. Provides a little pop-up once Smods has been patched detailing what has worked (or what hasn't).
+4. Provides a little pop-up once SMODS has been patched detailing what has worked (or what hasn't).
 # Disclaimers!
 This is for Android only! Sorry Apple users. I truly have no idea how to pick apart IOS apps. Also, for Pixel users, I tried my methods on a Google Pixel and encountered an issue with limited storage access. Something about Pixel phones handle storage security is different than other Android devices. I still haven't found a workaround for this yet so I apologize.
 
@@ -80,6 +80,6 @@ Any mod with a config option that requires a restart (including disabling the mo
 
 I have not tested every possible interaction myself. I am only one person. So please don't be afraid to report any issues that you may encounter during your play!
 
-Finally, I recommend running the game with only Smods and Colourguard installed in the Mods folder first. Just to make sure that the actual SMmods framework is running as intended. You could always go all in at once, but if something goes wrong, start from those two mods and add others one at a time.
+Finally, I recommend running the game with only SMODS and Colourguard installed in the Mods folder first. Just to make sure that the actual SMmods framework is running as intended. You could always go all in at once, but if something goes wrong, start from those two mods and add others one at a time.
 # Shoutouts
 I just wanted to take a moment here at the end and give a shoutout to all the people who make modded Balatro and Balatro mobile possible. They are all incredibly talented individuals who created things for the community I could have never dreamed up. Especially to those who created Lovely, Steamodded, and the Balatro Mobile Maker. None of what I did would be possible without them giving me a foundation to work from. It's only thanks to their hard work and the work of all the creators out there that I could even create something like this for you all. I hope you all enjoy! 
