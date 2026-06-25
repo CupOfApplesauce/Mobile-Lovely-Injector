@@ -95,3 +95,24 @@ I have not tested every possible interaction myself. I am only one person. So pl
 Finally, I recommend running the game with only SMODS and Colourguard installed in the Mods folder first. Just to make sure that the actual SMODS framework is running as intended. You could always go all in at once, but if something goes wrong, start from those two mods and add others one at a time.
 # Shoutouts
 I just wanted to take a moment here at the end and give a shoutout to all the people who make modded Balatro and Balatro mobile possible. They are all incredibly talented individuals who created things for the community I could have never dreamed up. Especially to those who created Lovely, Steamodded, and the Balatro Mobile Maker. None of what I did would be possible without them giving me a foundation to work from. It's only thanks to their hard work and the work of all the creators out there that I could even create something like this for you all. I hope you all enjoy! 
+
+# License
+Mobile Lovely Injector is released under the **GNU General Public License v3.0 (GPL-3.0)**. The full text is in the [LICENSE](LICENSE) file.
+
+In plain terms: you are free to use, study, share, and modify this project. But if you distribute it — or any modified version — you must keep it under the GPL-3.0 and make the source available. That means this project, and anything built from it, has to stay open and free for the community. Someone cannot take this, make it closed-source, and sell it as a locked-down proprietary product.
+
+This is an independent work. It does not include the source code of Lovely, Steamodded, the Balatro Mobile Maker, or Balatro itself — it is designed to work alongside them.
+
+    Mobile Lovely Injector — a pure-Lua, on-device Lovely injector for Balatro on Android.
+    Copyright (C) 2026 CupOfApplesauce
+
+    This program is free software: you can redistribute it and/or modify it under
+    the terms of the GNU General Public License as published by the Free Software
+    Foundation, either version 3 of the License, or (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful, but WITHOUT ANY
+    WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+    PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License along with
+    this program. If not, see <https://www.gnu.org/licenses/>.
