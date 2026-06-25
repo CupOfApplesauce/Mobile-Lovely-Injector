@@ -6,9 +6,9 @@ This is a specially made Lovely injector for the PC to APK repackage tool for Ba
 3. Writes MLI reports and game dumps in case you run into errors directly to your device's downloads.
 4. Provides a little pop-up once Smods has been patched detailing what has worked (or what hasn't).
 # Disclaimers!
-This is for Android only! Sorry Apple users. I truly have no idea how to pick apart IOS apps. Also, for Pixel users, I tried my methods on a Google Pixel and ecountered an issue with limited storage access. Something about Pixel phones handle storage security is different than other Android devices. I still haven't found a workaround for this yet so I apologize.
+This is for Android only! Sorry Apple users. I truly have no idea how to pick apart IOS apps. Also, for Pixel users, I tried my methods on a Google Pixel and encountered an issue with limited storage access. Something about Pixel phones handle storage security is different than other Android devices. I still haven't found a workaround for this yet so I apologize.
 
-I have not tested full mod compatability and most new mods reveal issues with my MLI system via crashing the game. The mods I have tested and know, as far as I'm aware, work are Steamodded, Pokermon, Multiplayer, and Crpytid (and by extension Amulet). There are some caveats but I will go over those at the end. I will of course, work on more mod compatability as time goes on, but I figured the best way to know what people would want is to put this out here for others.
+I have not tested full mod compatibility and most new mods reveal issues with my MLI system via crashing the game. The mods I have tested and know, as far as I'm aware, work are Steamodded, Pokermon, Multiplayer, and Cryptid (and by extension Amulet). There are some caveats but I will go over those at the end. I will of course, work on more mod compatibility as time goes on, but I figured the best way to know what people would want is to put this out here for others.
 
 These instructions require that you create a new APK from an UNMODDED version of Balatro without any save data transferred over. We will be adding all the necessary mods during this process. You should be able to do this without removing all the mods from your modded PC experience by opting to not transfer save data during the repack, but if you encounter any issues, I'd recommend starting from the beginning and removing mods from PC. I can't guarantee any save data from an existing mobile Balatro repack will survive this process. So if you really want to keep your save data, I recommend changing this version's name (which I'll go over at the end). 
 
@@ -19,15 +19,15 @@ Finally, for complete transparency, I made this using Anthropic's Claude coding.
 1. Please read this top to bottom and follow the instructions carefully!
 2. A repackaged version of PC Balatro as an APK. This can be done by using blake502's Balatro Mobile Maker found here. https://github.com/blake502/balatro-mobile-maker
 3. Some way of decompiling and recompiling an APK. I was able to do all of this right from my mobile devices by using Apktool M! https://maximoff.su/apktool/?lang=en (Recommended because I didn't try other tools.)
-4. The latest version of Steamodded (at the time of writing this, that is version 1.0.0-BETA-1814a). https://github.com/Steamodded
+4. Steamodded version 1.0.0-BETA-1814a. https://github.com/Steamodded
 5. Mobile Lovely Injector (MLI).
 # Getting Started
 These instructions assume you have already created your APK of Balatro. If you have not, please do so from the requirements above and come back!
 1. Decompile your apk using your preferred tool. Again, I seriously recommend Apktool M. It's the tool I used and allowed me to do this pretty easily from my phone. (I honestly don't know how similar other APK tools are to one another, so I apologize if these instruction are not ubiquitous).
 2. Once your game has been decompiled, you are looking for two things: "AndroidManifest.xml and "game.love". game.love will be located inside the assets folder.
 # Android Manifest
-This is pretty straight forward. All you need to do is replace your manifest with the one I provide. For transparency, the only difference is that I add one extra line that adds a permission to read and write into your storage. All this does is enable the game to read the "Mods" folder and write MLI reports like I mentioned in "What This Does". 
-uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/ (Removed <> at beginning and end respectively so that the actual line still appears here on the github page, but they are required if you choose to do it manually).
+This is pretty straight forward. All you need to do is add one new permission that allows the game to read and write into your storage like I mentioned in "What This Does". 
+uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/ (Removed <> at beginning and end respectively so that the actual line still appears here on the github page, but they are required).
 That's it for the manifest!
 # game.love
 1. Convert your "game.love" into "game.zip". This doesn't require any tools. It's as simple as renaming the .love portion to .zip.
@@ -55,21 +55,21 @@ Almost there!
 
 The intial boot sequence after a new installation/update and changing the mod folder's content always results in a long boot time (sometimes upwards of 5 minutes in my experience). This is totally normal. As the phone is trying to patch everything together and create a cache. Each subsequent boot has a significantly faster boot time. Pretty much immediate. Even with all the mods installed.
 
-If you are experiencing an issue where you stare at a black screen for a while and it suddenly force closes, please use the mentioned Atlas and LowRes mods. Your device cannot handle the memory demands that the initial boot requires. For reference, I did this on my Galaxy S22 Ultra and Galaxy Tab S10. The mods are created to lighten the burden and make sure the game can actually complete that initial boot on my phone. My tablet did not require the memory mods, but they never hurt to have anyways. You can use the Atlas mod first before going for the lowres mod, but I've found that the lowres mod is the most impactful at significantly reducing your memory requirements (lowres cannot be run without atlas!). I know lowres sounds less than ideal, but I promise that on a mobile device, there is barely any noticeable change. If you notice one at all.
+If you are experiencing an issue where you stare at a black screen for a while and it suddenly force closes, please use the mentioned Atlas and LowRes mods. Your device cannot handle the memory demands that the initial boot requires. For reference, I did this on my Galaxy S22 Ultra and Galaxy Tab S10. The mods are created to lighten the burden and make sure the game can actually complete that initial boot on my phone. My tablet did not require the memory mods, but they never hurt to have anyways. You can use each mod individually, but I find that they work best together. I know lowres sounds less than ideal, but I promise that on a mobile device, there is barely any noticeable change. If you notice one at all.
 
-If you're game boots to the main menu, CONGRATS! You are now finished and free to enjoy your modded Balatro Experience on the go!
+If your game boots to the main menu, CONGRATS! You are now finished and free to enjoy your modded Balatro Experience on the go!
 # Protecting Save Data and Changing the Game's Name
 If you already have an apk repack and wish to prevent that data from being overwritten, all you need to do is change a couple things in the AndroidManifest.xml!
-1. Locate "<Manifest" (Should be right on top) and change the package name from: package="com.unofficial.balatro" to something like package="com.unofficial.balatro.mli". This will change where your new Balatro writes it's save data.
+1. Locate "<Manifest" (Should be right on top) and change the package name from: package="com.unofficial.balatro" to something like package="com.unofficial.balatro.mli". This will change where your new Balatro writes its save data.
 Technically, you're all set! The new Balatro will save somewhere else! If you'd like to change the name of the game so that it's visually distinct from your other copy, follow step 2.
 2. Inside AndroidManifest.xml, under "<application" and "<activity" change the two instances of "Balatro" to whatever you want! So long as they are the same. As an example, you could change both to "Balatro MLI".
 
 You're all set!
 # Some Caveats
-Being that I have used the most recent version of SMODS, there are some specific features of certain mods that don't work as intended. I have a small list here form my own personal testing. I'm sure the list will get bigger as more people play. None of these crash the game and the mods are otherwise fully content compatible.
+Being that I have used the most recent version of SMODS, there are some specific features of certain mods that don't work as intended. I have a small list here from my own personal testing. I'm sure the list will get bigger as more people play. None of these crash the game and the mods are otherwise fully content compatible.
 
 Cryptid: 
-The boss blind, "The Tax", does not implement it's hand score limit. It can be done in one hand.
+The boss blind, "The Tax", does not implement its hand score limit. It can be done in one hand.
 Giving a card the Global effect via the Code consumable does not function. The card gets the tag, but doesn't draw itself first at the beginning of blinds.
 
 Multiplayer:
