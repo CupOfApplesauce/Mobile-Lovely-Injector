@@ -29,7 +29,7 @@ These instructions assume you have already created your APK of Balatro. If you h
 # Android Manifest
 This is pretty straight forward. All you need to do is add one new permission that allows the game to read and write into your storage like I mentioned in "What This Does". 
 uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/ (Removed <> at beginning and end respectively so that the actual line still appears here on the github page, but they are required).
-That's it for the manifest!
+That's it for the manifest! For ease of access, I included a manifest snippet that can be used to copy and paste a properly formatted permission line (it does not replace your whole AndroidManifest.xml!).
 # game.love
 1. Convert your "game.love" into "game.zip". This doesn't require any tools. It's as simple as renaming the .love portion to .zip.
 2. Extract your game.zip. I recommend extracting it to "game" or any other dedicated folder to avoid confusion with what's already in assets.
