@@ -14,7 +14,7 @@ These instructions require that you create a new APK from an UNMODDED version of
 
 THIS IS NOT A FREE APK! This whole process starts with you having your own legally purchased copy of Balatro and converting it into an APK yourself!
 
-Finally, for complete transparency, I made this using Anthropic's Claude coding. THIS IS NOT AN ADVERTISEMENT! I just felt that I needed to be honest about something like this. There are so many incredibly intelligent and talented content creators and coders for this game. I am not one of them and I will not disrespect them by pretending to be one. That being said, this is designed to work with their mods AS IS. I would never dare to insult them by altering their hard work. I just wanted to create sometehing that allowed me to enjoy their work to the fullest. Hopefully this will help you achieve the same.
+Finally, for complete transparency, I made this using Anthropic's Claude coding. THIS IS NOT AN ADVERTISEMENT! I just felt that I needed to be honest about something like this. There are so many incredibly intelligent and talented content creators and coders for this game. I am not one of them and I will not disrespect them by pretending to be one. That being said, this is designed to work with their mods AS IS. I would never dare to insult them by altering their hard work. I just wanted to create something that allowed me to enjoy their work to the fullest. Hopefully this will help you achieve the same.
 # Requirements
 1. Please read this top to bottom and follow the instructions carefully!
 2. A repackaged version of PC Balatro as an APK. This can be done by using blake502's Balatro Mobile Maker found here. https://github.com/blake502/balatro-mobile-maker
@@ -54,12 +54,12 @@ Almost there!
 3. While it may not be required on your device, I highly recommend keeping AtlasMemFix and the LowResTextures mods in your back pocket for later.
 4. With the mods installed and all files access granted, you should be ready to restart the game (always fully close the game before trying to return).
 
-The intial boot sequence after a new installation/update and changing the mod folder's content always results in a long boot time (sometimes upwards of 5 minutes in my experience). This is totally normal. As the phone is trying to patch everything together and create a cache. Each subsequent boot has a significantly faster boot time. Pretty much immediate. Even with all the mods installed.
+The initial boot sequence after a new installation/update and changing the mod folder's content always results in a long boot time (sometimes upwards of 5 minutes in my experience). This is totally normal. As the phone is trying to patch everything together and create a cache. Each subsequent boot has a significantly faster boot time. Pretty much immediate. Even with all the mods installed.
 
 If you are experiencing an issue where you stare at a black screen for a while and it suddenly force closes, please use the mentioned Atlas and LowRes mods. Your device cannot handle the memory demands that the initial boot requires. For reference, I did this on my Galaxy S22 Ultra and Galaxy Tab S10. The mods are created to lighten the burden and make sure the game can actually complete that initial boot on my phone. My tablet did not require the memory mods, but they never hurt to have anyways. You can use each mod individually, but I find that they work best together. I know lowres sounds less than ideal, but I promise that on a mobile device, there is barely any noticeable change. If you notice one at all.
 
 If your game boots to the main menu, CONGRATS! You are now finished and free to enjoy your modded Balatro Experience on the go!
-# What My Mods Do from the Starter Kit Do
+# What My Mods from the Starter Kit Do
 Here's a quick breakdown of what my mods do. Again SmodsColourGuard is required!
 
 1. SmodsColourGuard REQUIRED. Prevents a rare Steamodded tooltip crash (guards a nil-colour lookup in SMODS.localize_box).
@@ -92,6 +92,6 @@ Any mod with a config option that requires a restart (including disabling the mo
 
 I have not tested every possible interaction myself. I am only one person. So please don't be afraid to report any issues that you may encounter during your play!
 
-Finally, I recommend running the game with only SMODS and Colourguard installed in the Mods folder first. Just to make sure that the actual SMmods framework is running as intended. You could always go all in at once, but if something goes wrong, start from those two mods and add others one at a time.
+Finally, I recommend running the game with only SMODS and Colourguard installed in the Mods folder first. Just to make sure that the actual SMODS framework is running as intended. You could always go all in at once, but if something goes wrong, start from those two mods and add others one at a time.
 # Shoutouts
 I just wanted to take a moment here at the end and give a shoutout to all the people who make modded Balatro and Balatro mobile possible. They are all incredibly talented individuals who created things for the community I could have never dreamed up. Especially to those who created Lovely, Steamodded, and the Balatro Mobile Maker. None of what I did would be possible without them giving me a foundation to work from. It's only thanks to their hard work and the work of all the creators out there that I could even create something like this for you all. I hope you all enjoy! 
