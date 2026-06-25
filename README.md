@@ -36,23 +36,25 @@ That's it for the manifest!
 4. Download the MLI Kit and extract it to a dedicated folder if you haven't already. Copy the contents "main.lua" and the "mli" folder and place them directly into the game's root folder.
 5. Take "main_original.lua" and put it into the mli folder.
 Your directory should now look something like this:
+
 game/
 -> main.lua (the new one you just added from the mli kit)
 -> mli/
    ∟-> main_original.lua
    ∟-> the rest of the mli files
 -> Everything else.
-6. Compress everything in the root folder and name it "game.love". If the option for compression level is available (Apktool M), I'd recommend setting that to 0.
-7. Take the game.love and move it up one folder back into assets. Should look like this:
+
+7. Compress everything in the root folder and name it "game.love". If the option for compression level is available (Apktool M), I'd recommend setting that to 0.
+8. Take the game.love and move it up one folder back into assets. Should look like this:
 assets/
 -> dexopt/
 ->game.zip
 ->game/
 ->game.love
 *Be careful not to nest the game within itself! I've made the mistake plenty of times where my directory looks like game/game/everything else and wondered why it wasn't working. It should always be game/everything else!*
-8. You are now free to delete the game.zip and game directory from assets.
+9. You are now free to delete the game.zip and game directory from assets.
 8.5 If you need to rename this version of Balatro to protect the save data of an already existing Balatro repack, this is the time to skip to "Renaming Your APK"
-9. Compile the project and install the game!
+10. Compile the project and install the game!
 You are more than welcome to run the game as is. Just to make sure the game actually boots vanilla. You'll probably see a pop-up that mentions giving all files access to the game. That's detailed in the next segment.
 # Give Balatro All Files Access
 This can be done by going to your settings and searching "All files access". If you do not see Balatro as an option to grant permission, it means that you forgot to change your Android Manifest. Please go back to that section and confirm you have uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/ added (including the > at the very end and < at the very beginning).
