@@ -36,16 +36,11 @@ That's it for the manifest!
 4. Download the MLI Kit and extract it to a dedicated folder if you haven't already. Copy the contents "main.lua" and the "mli" folder and place them directly into the game's root folder.
 5. Take "main_original.lua" and put it into the mli folder.
 6. Compress everything in the root folder and name it "game.love". If the option for compression level is available (Apktool M), I'd recommend setting that to 0.
-7. Take the game.love and move it up one folder back into assets. Should look like this:
-assets/
--> dexopt/
-->game.zip
-->game/
-->game.love
+7. Take the game.love and move it up one folder back into assets.
 *Be careful not to nest the game within itself! I've made the mistake plenty of times where my directory looks like game/game/everything else and wondered why it wasn't working. It should always be game/everything else!*
-9. You are now free to delete the game.zip and game directory from assets.
-8.5 If you need to rename this version of Balatro to protect the save data of an already existing Balatro repack, this is the time to skip to "Renaming Your APK"
-10. Compile the project and install the game!
+8. You are now free to delete the game.zip and game directory from assets.
+8.5 If you need to rename this version of Balatro to protect the save data of an already existing Balatro repack, this is the time to skip to "Protecting Save Data and Changing the Game's Name"
+9. Compile the project and install the game!
 You are more than welcome to run the game as is. Just to make sure the game actually boots vanilla. You'll probably see a pop-up that mentions giving all files access to the game. That's detailed in the next segment.
 # Give Balatro All Files Access
 This can be done by going to your settings and searching "All files access". If you do not see Balatro as an option to grant permission, it means that you forgot to change your Android Manifest. Please go back to that section and confirm you have uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/ added (including the > at the very end and < at the very beginning).
@@ -54,24 +49,24 @@ I promise that I'm not doing anything shady despite how intimidating all files a
 # Mods
 Almost there!
 1. In your device's storage, go to downloads and create a folder named "Mods". This is case sensitive! "mods" will not work!
-2. Insert the mods you wish to play with (steamodded required as well as SmodsColourGuard). Currently, Cryptid (requires Amulet which is working as well), Pokermon, Multiplayer, and some of my own personal mods that make the game work under certain conditions.
-3. While it may not be required on your device, I highly recommend downloading AtlasMemFix and LowResTextures mods and keeping them in your back pocket for later.
+2. Insert the mods you wish to play with (steamodded required as well as SmodsColourGuard). Currently, Cryptid (requires Amulet which is working as well), Pokermon, Multiplayer, and some of my own personal mods that make the game work under certain conditions. I extracted every games .zip and placed the contents in Mods. For instance: Mods/Steamodded/Steamodded's content. *be careful not to nest the mods within themselves!*
+3. While it may not be required on your device, I highly recommend downloading AtlasMemFix and the LowResTextures mods and keeping them in your back pocket for later.
 4. With the mods installed and all files access granted, you should be ready to restart the game (always fully close the game before trying to return).
 
-The intial boot sequence after a new installation/update and changing the mod folders always results in a long boot time (sometimes upwards of 5 minutes in my experience). This is totally normal as the phone is trying to patch everything together and create a cahce. Each subsequent boot has a significantly faster boot time. Pretty much immediate. Even with all the mods installed.
+The intial boot sequence after a new installation/update and changing the mod folder's content always results in a long boot time (sometimes upwards of 5 minutes in my experience). This is totally normal. As the phone is trying to patch everything together and create a cache. Each subsequent boot has a significantly faster boot time. Pretty much immediate. Even with all the mods installed.
 
-If you are experiencing an issue where you stare at a black screen for a while and it suddenly force closes, please use the mentioned Atlas and LowRes mods. Your device cannot handle the memory demands that the initial boot requires. For reference, I did this on my Galaxy S22 Ultra and Galaxy Tab S10. The mods are created to lighten the burden and make sure the game can actually complete that initial boot on my phone. My tablet did not require the memory mods, but they never hurt to have anyways. You can use the Atlas mod first before going for the lowres mod, but I've found that the lowres mod is the most impactful at significantly reducing your memory requirements. I know lowres sounds less than ideal, but I promise that on a mobile device, there is barely any noticeable change. If you notice one at all.
+If you are experiencing an issue where you stare at a black screen for a while and it suddenly force closes, please use the mentioned Atlas and LowRes mods. Your device cannot handle the memory demands that the initial boot requires. For reference, I did this on my Galaxy S22 Ultra and Galaxy Tab S10. The mods are created to lighten the burden and make sure the game can actually complete that initial boot on my phone. My tablet did not require the memory mods, but they never hurt to have anyways. You can use the Atlas mod first before going for the lowres mod, but I've found that the lowres mod is the most impactful at significantly reducing your memory requirements (lowres cannot be run without atlas!). I know lowres sounds less than ideal, but I promise that on a mobile device, there is barely any noticeable change. If you notice one at all.
 
 If you're game boots to the main menu, CONGRATS! You are now finished and free to enjoy your modded Balatro Experience on the go!
 # Protecting Save Data and Changing the Game's Name
 If you already have an apk repack and wish to prevent that data from being overwritten, all you need to do is change a couple things in the AndroidManifest.xml!
-1. Locate "<Manifest" (Should be right on top) and change the package name from: package="com.unofficial.balatro" to something like package="com.unofficial.balatro.mli". This will change where your new Balatro writes it's save data. This is unaccessible without rooting your device. There's seriously no need to do that though.
+1. Locate "<Manifest" (Should be right on top) and change the package name from: package="com.unofficial.balatro" to something like package="com.unofficial.balatro.mli". This will change where your new Balatro writes it's save data.
 Technically, you're all set! The new Balatro will save somewhere else! If you'd like to change the name of the game so that it's visually distinct from your other copy, follow step 2.
 2. Inside AndroidManifest.xml, under "<application" and "<activity" change the two instances of "Balatro" to whatever you want! So long as they are the same. As an example, you could change both to "Balatro MLI".
 
 You're all set!
 # Some Caveats
-Being that I have used the most recent version of SMODS, there are some specific features of certain mods that don't work as intended. I have a small list here form my own personal testing. I'm sure the list will get bigger as more people play. None of these crash the game and are otherwise fully content compatible.
+Being that I have used the most recent version of SMODS, there are some specific features of certain mods that don't work as intended. I have a small list here form my own personal testing. I'm sure the list will get bigger as more people play. None of these crash the game and the mods are otherwise fully content compatible.
 
 Cryptid: 
 The boss blind, "The Tax", does not implement it's hand score limit. It can be done in one hand.
@@ -81,9 +76,7 @@ Multiplayer:
 Standard Ranked and Legacy Ranked are not playable. This is simply because I am using SMODS version 1.0.0-BETA-1814a and not 1.0.0-BETA-1620a.
 
 All mods:
-Any mod with a config option that requires a restart (including disabling the mod entirely) do not work. If you want to disable a mod, it's best to just remove it from your mods folder. This will require a long reboot once again.
-
-The specific issues I listed above I believe are related to using a different version of SMODS, but this lovely injector was designed using the latest version. I don't believe it will work correctly with any previous version of SMODS.
+Any mod with a config option that requires a restart (including disabling the mod entirely) does not work. If you want to disable a mod, it's best to just remove it from your mods folder. This will require a long reboot once again.
 
 I have not tested every possible interaction myself. I am only one person. So please don't be afraid to report any issues that you may encounter during your play!
 
