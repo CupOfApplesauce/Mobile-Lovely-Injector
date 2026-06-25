@@ -21,6 +21,7 @@ Finally, for complete transparency, I made this using Anthropic's Claude coding.
 3. Some way of decompiling and recompiling an APK. I was able to do all of this right from my mobile devices by using Apktool M! https://maximoff.su/apktool/?lang=en (Recommended because I didn't try other tools.)
 4. Steamodded version 1.0.0-BETA-1814a. https://github.com/Steamodded
 5. Mobile Lovely Injector (MLI).
+6. SmodsColourGuard from the mods starter kit.
 # Getting Started
 These instructions assume you have already created your APK of Balatro. If you have not, please do so from the requirements above and come back!
 1. Decompile your apk using your preferred tool. Again, I seriously recommend Apktool M. It's the tool I used and allowed me to do this pretty easily from my phone. (I honestly don't know how similar other APK tools are to one another, so I apologize if these instruction are not ubiquitous).
@@ -49,8 +50,8 @@ I promise that I'm not doing anything shady despite how intimidating all files a
 # Mods
 Almost there!
 1. In your device's storage, go to downloads and create a folder named "Mods". This is case sensitive! "mods" will not work!
-2. Insert the mods you wish to play with (steamodded required as well as SmodsColourGuard). Currently, Cryptid (requires Amulet which is working as well), Pokermon, Multiplayer, and some of my own personal mods that make the game work under certain conditions. I extracted every games .zip and placed the contents in Mods. For instance: Mods/Steamodded/Steamodded's content. *be careful not to nest the mods within themselves!*
-3. While it may not be required on your device, I highly recommend downloading AtlasMemFix and the LowResTextures mods and keeping them in your back pocket for later.
+2. Insert the mods you wish to play with (steamodded required as well as SmodsColourGuard from the mods starter kit). Currently, Cryptid (requires Amulet which is working as well), Pokermon, Multiplayer, and some of my own personal mods that make the game work under certain conditions (also in the starter kit). I extracted every mod's .zip and placed the contents in Mods. For instance: Mods/Steamodded/Steamodded's content. *be careful not to nest the mods within themselves!*
+3. While it may not be required on your device, I highly recommend keeping AtlasMemFix and the LowResTextures mods in your back pocket for later.
 4. With the mods installed and all files access granted, you should be ready to restart the game (always fully close the game before trying to return).
 
 The intial boot sequence after a new installation/update and changing the mod folder's content always results in a long boot time (sometimes upwards of 5 minutes in my experience). This is totally normal. As the phone is trying to patch everything together and create a cache. Each subsequent boot has a significantly faster boot time. Pretty much immediate. Even with all the mods installed.
@@ -58,6 +59,17 @@ The intial boot sequence after a new installation/update and changing the mod fo
 If you are experiencing an issue where you stare at a black screen for a while and it suddenly force closes, please use the mentioned Atlas and LowRes mods. Your device cannot handle the memory demands that the initial boot requires. For reference, I did this on my Galaxy S22 Ultra and Galaxy Tab S10. The mods are created to lighten the burden and make sure the game can actually complete that initial boot on my phone. My tablet did not require the memory mods, but they never hurt to have anyways. You can use each mod individually, but I find that they work best together. I know lowres sounds less than ideal, but I promise that on a mobile device, there is barely any noticeable change. If you notice one at all.
 
 If your game boots to the main menu, CONGRATS! You are now finished and free to enjoy your modded Balatro Experience on the go!
+# What My Mods Do from the Starter Kit Do
+Here's a quick breakdown of what my mods do. Again SmodsColourGuard is required!
+
+1. SmodsColourGuard REQUIRED. Prevents a rare Steamodded tooltip crash (guards a nil-colour lookup in SMODS.localize_box).
+2. AtlasMemFix RECOMMENDED. Frees the redundant CPU copy of each atlas after its GPU texture is built. Lowers memory, no visual change. Safe to keep installed everywhere.
+3. LowResTextures OPTIONAL (low-RAM phones). Forces 1x textures to cut texture memory ~4x. Trade-off: lower-res sprites. Try AtlasMemFix alone first; add this only if the game still force-closes on the long first boot.
+4. HelloMod OPTIONAL. A tiny example/signature mod and a template for writing your own MLI-compatible mods (if that's something that would interest you).
+
+NOTE: AtlasMemFix and SmodsColourGuard patch Steamodded's own source by exact
+lines, so they are matched to the Steamodded version MLI was tested against.
+Use that version; a newer Steamodded may silently stop these from applying.
 # Protecting Save Data and Changing the Game's Name
 If you already have an apk repack and wish to prevent that data from being overwritten, all you need to do is change a couple things in the AndroidManifest.xml!
 1. Locate "<Manifest" (Should be right on top) and change the package name from: package="com.unofficial.balatro" to something like package="com.unofficial.balatro.mli". This will change where your new Balatro writes its save data.
