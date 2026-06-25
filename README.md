@@ -35,17 +35,8 @@ That's it for the manifest!
 3. In the extracted zip, locate main.lua and rename it to main_original.lua.
 4. Download the MLI Kit and extract it to a dedicated folder if you haven't already. Copy the contents "main.lua" and the "mli" folder and place them directly into the game's root folder.
 5. Take "main_original.lua" and put it into the mli folder.
-Your directory should now look something like this:
-
-game/
-   main.lua (the new one you just added from the mli kit)
-   Everything else.
-   mli/
-     main_original.lua
-     the rest of the mli files
-
-7. Compress everything in the root folder and name it "game.love". If the option for compression level is available (Apktool M), I'd recommend setting that to 0.
-8. Take the game.love and move it up one folder back into assets. Should look like this:
+6. Compress everything in the root folder and name it "game.love". If the option for compression level is available (Apktool M), I'd recommend setting that to 0.
+7. Take the game.love and move it up one folder back into assets. Should look like this:
 assets/
 -> dexopt/
 ->game.zip
