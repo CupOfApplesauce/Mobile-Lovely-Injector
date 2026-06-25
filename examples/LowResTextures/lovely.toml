@@ -1,0 +1,38 @@
+# LowResTextures - force 1x (half-resolution) textures to cut texture RAM ~4x.
+#
+# Balatro defaults texture_scaling to 2 (high-res). On mobile, where the GPU
+# shares system RAM, loading 2x atlases for the base game + a huge content mod
+# can exhaust memory and force-close before the menu. This forces 1x everywhere
+# (base game AND Steamodded mod atlases, which load from assets/<scale>x/).
+#
+# TRADEOFF: sprites are lower-resolution / more pixelated. This is the heavy
+# hammer for low-RAM phones -- try AtlasMemFix alone first. Remove this folder
+# to return to full-resolution textures.
+
+[manifest]
+version = "1.0.0"
+priority = -100   # run early so the value is 1 before any atlas loads
+
+# Both the "clamp existing setting" sites collapse to 1...
+[[patches]]
+[patches.pattern]
+target = "game.lua"
+match_indent = true
+position = "at"
+pattern = "self.SETTINGS.GRAPHICS.texture_scaling = self.SETTINGS.GRAPHICS.texture_scaling > 1 and 2 or 1"
+payload = "self.SETTINGS.GRAPHICS.texture_scaling = 1"
+
+# ...and the default when no setting is saved.
+[[patches]]
+[patches.pattern]
+target = "game.lua"
+match_indent = true
+position = "at"
+pattern = "self.SETTINGS.GRAPHICS.texture_scaling = self.SETTINGS.GRAPHICS.texture_scaling or 2"
+payload = "self.SETTINGS.GRAPHICS.texture_scaling = 1"
+
+# NOTE: we deliberately do NOT disable mipmap generation. Steamodded calls
+# image:setMipmapFilter(...) on atlases, which errors on a non-mipmapped
+# texture ("Non-mipmapped texture cannot have mipmap filtering"). The 1x switch
+# above is the large win; the extra ~25% from dropping mipmaps isn't worth that
+# breakage on top of it.

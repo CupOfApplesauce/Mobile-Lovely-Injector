@@ -1,0 +1,481 @@
+-- Mobile Lovely Injector: patch engine.
+--
+-- Applies lovely-style patches to the *source text* of a game file before it
+-- is compiled. Supports the patch kinds that can be performed as pure text
+-- transforms: `pattern`, `copy`, and a best-effort `regex`. `module` patches
+-- are not source transforms and are handled by the injector (registered into
+-- package.preload), not here.
+
+local glob = require("mli.glob")
+local log  = require("mli.log")
+local rex  = require("mli.regex")
+
+local engine = {}
+
+-- ---- helpers -------------------------------------------------------------
+local function split_lines(s)
+  local lines = {}
+  local start = 1
+  while true do
+    local nl = s:find("\n", start, true)
+    if not nl then
+      lines[#lines + 1] = s:sub(start)
+      break
+    end
+    lines[#lines + 1] = s:sub(start, nl - 1)
+    start = nl + 1
+  end
+  return lines
+end
+
+local function leading_indent(line)
+  return (line:match("^[ \t]*")) or ""
+end
+
+local function interpolate_vars(text, vars, patch_dir)
+  if not text then return text end
+  if patch_dir then
+    -- lovely exposes the owning mod's patch directory to payloads.
+    text = text:gsub("{{lovely_hack:patch_dir}}", (patch_dir:gsub("%%", "%%%%")))
+  end
+  if not vars then return text end
+  return (text:gsub("{{lovely:([%w_%-%.]+)}}", function(name)
+    local v = vars[name]
+    if v == nil then return "{{lovely:" .. name .. "}}" end
+    return tostring(v)
+  end))
+end
+
+-- Apply `match_indent` and `line_prepend` to a payload block.
+local function format_payload(payload, indent, line_prepend)
+  if (not indent or indent == "") and (not line_prepend or line_prepend == "") then
+    return payload
+  end
+  local prefix = (line_prepend or "") .. (indent or "")
+  local out = {}
+  for _, l in ipairs(split_lines(payload)) do
+    out[#out + 1] = prefix .. l
+  end
+  return table.concat(out, "\n")
+end
+
+-- ---- pattern patches -----------------------------------------------------
+-- target/pattern/position(before|after|at)/payload/match_indent/times
+--
+-- Mirrors lovely-core's pattern.rs: the pattern may span multiple lines; each
+-- pattern line is trimmed and must FULLY match the corresponding trimmed
+-- source line (sliding window). Substring hits do not count.
+local function apply_pattern(lines, patch, vars)
+  local position = patch.position or "after"
+  local payload = interpolate_vars(patch.payload or "", vars, patch._mod_dir)
+  local match_indent = patch.match_indent
+  local limit = patch.times -- nil = unlimited
+  local applied = 0
+
+  -- Split the pattern into trimmed lines (usually just one). Like Rust's
+  -- str::lines(), a trailing newline does not produce a final empty line.
+  local raw_pat_lines = split_lines(patch.pattern or "")
+  if #raw_pat_lines > 0 and raw_pat_lines[#raw_pat_lines] == "" then
+    table.remove(raw_pat_lines)
+  end
+  local pat_lines = {}
+  for _, pl in ipairs(raw_pat_lines) do
+    pat_lines[#pat_lines + 1] = glob.trim(pl)
+  end
+  local plen = #pat_lines
+  if plen == 0 then return lines, 0 end
+
+  local function window_matches(at)
+    for k = 1, plen do
+      local src = lines[at + k - 1]
+      if src == nil or not glob.line_matches(src, pat_lines[k]) then
+        return false
+      end
+    end
+    return true
+  end
+
+  -- Push a (possibly multi-line) payload block as INDIVIDUAL line entries, so
+  -- `out` stays a flat array of single lines. This keeps the result usable as a
+  -- line array by the next pattern patch (which must be able to match lines
+  -- introduced by an earlier payload), matching the old split-per-patch
+  -- behavior while letting engine.apply avoid re-splitting between patches.
+  local function push_block(out, block)
+    local start = 1
+    while true do
+      local nl = block:find("\n", start, true)
+      if not nl then out[#out + 1] = block:sub(start); break end
+      out[#out + 1] = block:sub(start, nl - 1)
+      start = nl + 1
+    end
+  end
+
+  local out = {}
+  local i, n = 1, #lines
+  while i <= n do
+    local hit = (limit == nil or applied < limit) and window_matches(i)
+    if hit then
+      applied = applied + 1
+      local indent = match_indent and leading_indent(lines[i]) or ""
+      local block = format_payload(payload, indent, nil)
+      if position == "before" then
+        push_block(out, block)
+        for k = 0, plen - 1 do out[#out + 1] = lines[i + k] end
+      elseif position == "at" then
+        push_block(out, block)           -- replace the matched window
+      else -- "after"
+        for k = 0, plen - 1 do out[#out + 1] = lines[i + k] end
+        push_block(out, block)
+      end
+      i = i + plen                       -- windows do not overlap
+    else
+      out[#out + 1] = lines[i]
+      i = i + 1
+    end
+  end
+  return out, applied
+end
+
+-- ---- regex patches (best effort) -----------------------------------------
+-- Lua has no PCRE, but it covers more than it first appears: `-` is a lazy
+-- quantifier, and counted repetition can be expanded. We compile a regex into
+-- a sequence of "atoms" (each matching one unit) plus quantifiers, which lets
+-- us translate lazy (`*?`->`-`) and `{n,m}` faithfully. PCRE `.` does not match
+-- newlines, so we map it to `[^\n]`. Constructs Lua genuinely can't express
+-- (alternation, lookaround) are rejected so the caller skips rather than
+-- applying a wrong patch.
+local LUA_MAGIC = { ["("] = "%(", [")"] = "%)", ["."] = "%.", ["%"] = "%%",
+                    ["+"] = "%+", ["-"] = "%-", ["*"] = "%*", ["?"] = "%?",
+                    ["["] = "%[", ["]"] = "%]", ["^"] = "%^", ["$"] = "%$" }
+local CLASS_ESCAPE = { t = "\t", n = "\n", r = "\r", s = "%s", S = "%S",
+                       d = "%d", D = "%D", w = "%w", W = "%W" }
+
+local function regex_to_lua(re)
+  -- Reject what we cannot faithfully represent. Ignore escaped \| and the
+  -- named-group prefix (?<name>).
+  local bare = re:gsub("\\.", ""):gsub("%(%?<%w+>", "")
+  if bare:find("|") then return nil, "alternation unsupported" end
+  if bare:find("%(%?") then return nil, "lookaround/non-capturing group unsupported" end
+
+  local out = {}
+  local i, n = 1, #re
+
+  -- Read one atom (a single-unit matcher) starting at i. Returns lua-fragment,
+  -- next_i, or nil if the next token is not an atom (e.g. anchor/group/quant).
+  local function read_atom()
+    local c = re:sub(i, i)
+    if c == "\\" then
+      local nx = re:sub(i + 1, i + 1)
+      i = i + 2
+      return CLASS_ESCAPE[nx] or (LUA_MAGIC[nx] and ("%" .. nx)) or nx
+    elseif c == "." then
+      i = i + 1
+      return "[^\n]"                 -- PCRE '.' excludes newline
+    elseif c == "[" then
+      local j = i + 1
+      local cls = { "[" }
+      if re:sub(j, j) == "^" then cls[#cls + 1] = "^"; j = j + 1 end
+      while j <= n and re:sub(j, j) ~= "]" do
+        local cc = re:sub(j, j)
+        if cc == "\\" then
+          cls[#cls + 1] = CLASS_ESCAPE[re:sub(j + 1, j + 1)] or re:sub(j + 1, j + 1)
+          j = j + 2
+        elseif cc == "%" then
+          cls[#cls + 1] = "%%"; j = j + 1
+        else
+          cls[#cls + 1] = cc; j = j + 1
+        end
+      end
+      cls[#cls + 1] = "]"
+      i = j + 1
+      return table.concat(cls)
+    elseif LUA_MAGIC[c] and c ~= "(" and c ~= ")" then
+      -- a magic char that is literal here (not a structural token we handle)
+      i = i + 1
+      return LUA_MAGIC[c]
+    elseif c:match("[%w_%s,;=:'\"<>/!@#&]") then
+      i = i + 1
+      return c
+    end
+    return nil
+  end
+
+  -- Apply a quantifier (if any) at i to the lua-fragment `atom`.
+  local function apply_quantifier(atom)
+    local c = re:sub(i, i)
+    if c == "*" then
+      i = i + 1
+      if re:sub(i, i) == "?" then i = i + 1; return atom .. "-" end
+      return atom .. "*"
+    elseif c == "+" then
+      i = i + 1
+      if re:sub(i, i) == "?" then i = i + 1; return atom .. atom .. "-" end -- lazy +: one then lazy rest
+      return atom .. "+"
+    elseif c == "?" then
+      i = i + 1
+      if re:sub(i, i) == "?" then i = i + 1 end
+      return atom .. "?"
+    elseif c == "{" then
+      local lo, hi, rest = re:match("^{(%d*),(%d*)}()", i)
+      local exact, rest2 = re:match("^{(%d+)}()", i)
+      if exact then
+        i = rest2
+        return atom:rep(tonumber(exact))
+      elseif lo then
+        i = rest
+        lo = tonumber(lo) or 0
+        local s = atom:rep(lo)
+        if hi == "" then
+          return s .. atom .. "*"            -- {n,}
+        else
+          return s .. (atom .. "?"):rep((tonumber(hi) or lo) - lo) -- {n,m}
+        end
+      end
+    end
+    return atom
+  end
+
+  while i <= n do
+    local c = re:sub(i, i)
+    if c == "(" then
+      local named = re:match("^%(%?<%w+>", i)
+      out[#out + 1] = "("
+      i = i + (named and #named or 1)
+    elseif c == ")" then
+      out[#out + 1] = ")"; i = i + 1
+    elseif c == "^" or c == "$" then
+      out[#out + 1] = c; i = i + 1
+    else
+      local before = i
+      local atom = read_atom()
+      if atom == nil then
+        -- unknown token; pass through escaped to avoid malformed patterns
+        out[#out + 1] = LUA_MAGIC[c] or c
+        i = (i == before) and (i + 1) or i
+      else
+        out[#out + 1] = apply_quantifier(atom)
+      end
+    end
+  end
+  return table.concat(out)
+end
+
+local function regex_group_names(re)
+  local names = {}
+  for name in re:gmatch("%(%?<(%w+)>") do
+    names[#names + 1] = name
+  end
+  return names
+end
+
+local function apply_regex(source, patch, vars)
+  local compiled, err = rex.compile(patch.pattern)
+  if not compiled then
+    log.warn("skipping regex patch (%s): %s", tostring(patch.pattern):sub(1, 60), tostring(err))
+    return source, 0
+  end
+  local position = patch.position or "at"
+  local limit = patch.times
+
+  -- Substitute capture references in a string: $name/${name} (named groups),
+  -- $1../${1} (numbered) and $0 (whole match). Used for BOTH the payload and
+  -- line_prepend (SMODS commonly uses line_prepend='$indent'). Unresolved refs
+  -- are stripped so a stray '$' can't produce invalid Lua.
+  local function substitute(text, whole, arr, named)
+    if not text or text == "" then return text end
+    for name, v in pairs(named) do
+      v = tostring(v)
+      text = text:gsub("%${" .. name .. "}", function() return v end)
+      text = text:gsub("%$" .. name .. "%f[%W]", function() return v end)
+      text = text:gsub("%$" .. name .. "$", function() return v end)
+    end
+    local function num(d)
+      d = tonumber(d)
+      if d == 0 then return whole end
+      return tostring(arr[d] or "")
+    end
+    text = text:gsub("%${(%d+)}", num):gsub("%$(%d+)", num)
+    text = interpolate_vars(text, vars, patch._mod_dir)
+    return (text:gsub("%${%w+}", ""):gsub("%$[%w_]+", ""))
+  end
+
+  local function build_block(whole, arr, named)
+    local payload = substitute(patch.payload or "", whole, arr, named)
+    local prepend = substitute(patch.line_prepend, whole, arr, named)
+    return format_payload(payload, nil, prepend)
+  end
+
+  -- root_capture names the group to anchor on; SMODS writes it both as 'name'
+  -- and '$name', so strip an optional leading '$'. The group may be referenced
+  -- by name (offsets["foo"]) or by number (offsets[1] for '$1'), so resolve both.
+  local root = patch.root_capture and patch.root_capture:gsub("^%$", "") or nil
+  local root_num = root and tonumber(root) or nil
+  local applied
+  source, applied = rex.gsub(source, compiled, function(whole, arr, named, offsets)
+    local block = build_block(whole, arr, named)
+    -- root_capture: the patch position is applied relative to ONLY that named
+    -- capture group inside the match, leaving the rest of the match intact.
+    local o = root and offsets and (offsets[root] or (root_num and offsets[root_num]))
+    if o then
+      local pre, mid, post = whole:sub(1, o[1] - 1), whole:sub(o[1], o[2]), whole:sub(o[2] + 1)
+      if position == "before" then
+        return pre .. block .. mid .. post
+      elseif position == "after" then
+        return pre .. mid .. block .. post
+      else -- at: replace just the captured group
+        return pre .. block .. post
+      end
+    end
+    if position == "before" then
+      return block .. "\n" .. whole
+    elseif position == "after" then
+      return whole .. "\n" .. block
+    else -- at / replace
+      return block
+    end
+  end, limit)
+  return source, applied
+end
+
+-- ---- copy patches --------------------------------------------------------
+-- position(append|prepend)/sources[]/payload. `read_source(path)` reads a file
+-- relative to the owning mod directory (injected by the caller).
+local function apply_copy(source, patch, vars, read_source)
+  local parts = {}
+  if patch.sources then
+    for _, src in ipairs(patch.sources) do
+      local content = read_source(src)
+      if content then
+        parts[#parts + 1] = content
+      else
+        log.warn("copy patch: could not read source '%s'", tostring(src))
+      end
+    end
+  end
+  if patch.payload then
+    parts[#parts + 1] = interpolate_vars(patch.payload, vars, patch._mod_dir)
+  end
+  local block = table.concat(parts, "\n")
+  if patch.position == "prepend" then
+    return block .. "\n" .. source
+  else -- append (default)
+    return source .. "\n" .. block
+  end
+end
+
+-- ---- public API ----------------------------------------------------------
+-- engine.apply(target, source, patches, opts)
+--   patches: array of patch descriptors for this target. Each has a `.kind`
+--            field ("pattern"|"regex"|"copy") plus the lovely fields.
+--   opts.vars: table of variables for {{lovely:...}} interpolation
+--   opts.read_source: function(rel_path) -> string|nil, used by copy patches
+-- Returns the patched source string, plus stats { applied, skipped, errors }.
+-- Each patch is applied in isolation (pcall): a single failing or non-matching
+-- patch is logged and skipped so it can never abort the others on the same
+-- file -- important on heavily-patched targets like card.lua.
+function engine.apply(target, source, patches, opts)
+  opts = opts or {}
+  local vars = opts.vars
+  local read_source = opts.read_source or function() return nil end
+  local stats = { applied = 0, skipped = 0, errors = 0 }
+
+  -- Keep the working buffer as a line ARRAY across consecutive `pattern`
+  -- patches instead of splitting+concatenating the whole file once per patch.
+  -- Files like card.lua carry ~250 patches, and the repeated full-file string
+  -- churn was a large source of transient memory and boot time on memory-tight
+  -- devices. We convert to a string only for copy/regex patches (which operate
+  -- on raw text) and once at the end. split_lines + concat("\n") round-trips
+  -- losslessly, so the result is byte-identical to splitting per patch.
+  local lines = nil                       -- non-nil => current form; `source` stale
+  local function to_string()
+    if lines then source = table.concat(lines, "\n"); lines = nil end
+    return source
+  end
+  local function to_lines()
+    if not lines then lines = split_lines(source) end
+    return lines
+  end
+
+  for _, patch in ipairs(patches) do
+    local kind = patch.kind
+    local ok, result, applied = pcall(function()
+      if kind == "pattern" then
+        return apply_pattern(to_lines(), patch, vars)        -- result is a line array
+      elseif kind == "regex" then
+        return apply_regex(to_string(), patch, vars)         -- result is a string
+      elseif kind == "copy" then
+        return apply_copy(to_string(), patch, vars, patch._read_source or read_source), 1
+      else
+        error("unknown patch kind '" .. tostring(kind) .. "'")
+      end
+    end)
+    if not ok then
+      stats.errors = stats.errors + 1
+      log.error("patch (%s) on %s failed, skipped: %s", tostring(kind), target, tostring(result))
+    elseif applied == 0 then
+      stats.skipped = stats.skipped + 1
+      log.warn("%s patch on %s matched 0 times: %s", kind, target,
+               tostring(patch.pattern):sub(1, 80))
+    else
+      stats.applied = stats.applied + 1
+      if kind == "pattern" then
+        lines = result                    -- stay in line form for the next pattern
+      else
+        source = result; lines = nil
+      end
+    end
+  end
+  return to_string(), stats
+end
+
+-- engine.apply_safe(target, source, patches, opts, compile)
+-- Applies patches one at a time, keeping only those that leave the source
+-- COMPILABLE (compile(src) returns truthy). Guarantees the result still
+-- compiles, so a single bad patch can never discard an entire file's patches
+-- (e.g. losing Steamodded's init injection because some other regex produced
+-- invalid Lua). Slower than apply(); used as a fallback when the all-at-once
+-- result fails to compile.
+function engine.apply_safe(target, source, patches, opts, compile)
+  -- Fast pass: pattern/copy payloads are literal Lua and rarely break syntax,
+  -- so we only recompile after `regex` patches (the ones that can emit invalid
+  -- Lua). This keeps the number of compiles ~= the number of regex patches.
+  local function pass(strict)
+    local kept = source
+    local skipped = 0
+    for _, patch in ipairs(patches) do
+      local ok, candidate = pcall(engine.apply, target, kept, { patch }, opts)
+      local check = strict or patch.kind == "regex"
+      if ok and candidate and (not check or compile(candidate)) then
+        kept = candidate
+      else
+        skipped = skipped + 1
+        if strict then
+          -- Name the dropped patch so we can see exactly what functionality is
+          -- missing (a dropped patch is usually a real bug in the engine).
+          local what = patch.pattern or (patch.sources and table.concat(patch.sources, ",")) or "?"
+          log.warn("DROPPED %s patch on %s (won't compile): %s | payload: %s",
+                   tostring(patch.kind), target, tostring(what):gsub("\n", "\\n"):sub(1, 90),
+                   tostring(patch.payload):gsub("\n", "\\n"):sub(1, 90))
+        end
+      end
+    end
+    return kept, skipped
+  end
+
+  local kept, skipped = pass(false)
+  if not compile(kept) then
+    -- A trusted (pattern/copy) patch must have broken it; redo validating all.
+    kept, skipped = pass(true)
+  end
+  if skipped > 0 then
+    log.warn("%s: kept %d/%d patches (%d skipped to stay compilable)",
+             target, #patches - skipped, #patches, skipped)
+  end
+  return kept
+end
+
+engine._split_lines = split_lines       -- exposed for tests
+engine._regex_to_lua = regex_to_lua      -- exposed for tests
+engine._interpolate = interpolate_vars   -- exposed for tests
+
+return engine

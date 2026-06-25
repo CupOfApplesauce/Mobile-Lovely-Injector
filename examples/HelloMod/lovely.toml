@@ -1,0 +1,39 @@
+# HelloMod — a minimal example mod for Mobile Lovely Injector.
+#
+# It demonstrates all three fully-supported patch types. Drop this folder into
+# the game's save-directory Mods/ folder:
+#   .../files/save/<identity>/Mods/HelloMod/
+# then launch the game and check mli/log.txt for the "[HelloMod]" lines.
+
+[manifest]
+version = "1.0.0"
+priority = 0
+dump_lua = false
+
+[vars]
+banner = "HelloMod loaded via Mobile Lovely Injector"
+
+# 1) module patch: make require("hellomod.util") available to the whole game.
+[[patches]]
+[patches.module]
+source = "src/util.lua"
+name = "hellomod.util"
+before = "main.lua"
+
+# 2) copy patch: append our bootstrap to the end of main.lua so it runs once
+#    the game's main.lua finishes loading.
+[[patches]]
+[patches.copy]
+target = "main.lua"
+position = "append"
+sources = ["src/bootstrap.lua"]
+
+# 3) pattern patch: print a line right after Balatro defines its speed factor.
+#    (A harmless, well-known anchor in game.lua.)
+[[patches]]
+[patches.pattern]
+target = "game.lua"
+pattern = "self.SPEEDFACTOR = 1"
+position = "after"
+match_indent = true
+payload = '''print("[HelloMod] {{lovely:banner}}")'''
