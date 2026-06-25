@@ -1,0 +1,14 @@
+<!--
+  Mobile Lovely Injector — manifest permission
+
+  Add ONLY the single <uses-permission .../> line below to your decoded
+  AndroidManifest.xml. Place it INSIDE the <manifest> ... </manifest> element,
+  on its own line alongside the other <uses-permission .../> entries that are
+  already there. Do NOT replace your whole manifest — just add this one line.
+
+  What it does: grants "All files access" so the game can read your
+  Download/Mods folder and write MLI logs/reports/dumps to Download.
+  After rebuilding + installing, also enable it on the device:
+  Settings → "All files access" → Balatro → Allowed.
+-->
+<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
