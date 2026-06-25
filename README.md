@@ -38,11 +38,11 @@ That's it for the manifest!
 Your directory should now look something like this:
 
 game/
--> main.lua (the new one you just added from the mli kit)
--> mli/
-   ∟-> main_original.lua
-   ∟-> the rest of the mli files
--> Everything else.
+   main.lua (the new one you just added from the mli kit)
+   Everything else.
+   mli/
+     main_original.lua
+     the rest of the mli files
 
 7. Compress everything in the root folder and name it "game.love". If the option for compression level is available (Apktool M), I'd recommend setting that to 0.
 8. Take the game.love and move it up one folder back into assets. Should look like this:
