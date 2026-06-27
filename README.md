@@ -67,7 +67,8 @@ Here's a quick breakdown of what my mods do. Again SmodsColourGuard is required!
 1. SmodsColourGuard REQUIRED. Prevents a rare Steamodded tooltip crash (guards a nil-colour lookup in SMODS.localize_box).
 2. AtlasMemFix RECOMMENDED. Frees the redundant CPU copy of each atlas after its GPU texture is built. Lowers memory, no visual change. Safe to keep installed everywhere.
 3. LowResTextures OPTIONAL (low-RAM phones). Forces 1x textures to cut texture memory ~4x. Trade-off: lower-res sprites. Try AtlasMemFix alone first; add this only if the game still force-closes on the long first boot.
-4. HelloMod OPTIONAL. A tiny example/signature mod and a template for writing your own MLI-compatible mods (if that's something that would interest you).
+4. AmuletScoreGuard OPTIONAL. A small Steamodded mod that wraps Amulet's check_and_set_high_score in a pcall as a defense-in-depth safety net (skips a cosmetic high-score update rather than crashing if it ever sees an unrecognized big number). Not needed without Amulet. *With the engine fix in v0.3.4, it shouldn't need to go come into play, but it's a very small insurance package.
+5. HelloMod OPTIONAL. A tiny example/signature mod and a template for writing your own MLI-compatible mods (if that's something that would interest you).
 
 NOTE: AtlasMemFix and SmodsColourGuard patch Steamodded's own source by exact
 lines, so they are matched to the Steamodded version MLI was tested against.
