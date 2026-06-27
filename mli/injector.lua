@@ -27,7 +27,7 @@ local raw_loadstring = _G.loadstring or _G.load
 
 local injector = {}
 
-injector.VERSION = "0.3.3"
+injector.VERSION = "0.3.4"
 injector.ORIGINAL_MAIN = "mli/main_original.lua"
 injector.DUMP_DIR = "mli/dump"
 
@@ -99,6 +99,52 @@ local function rewrite_thread_creators(source)
     end
     return "love.thread.newThread" .. args
   end))
+end
+
+-- Compute the patched SOURCE (string) for a game file, or nil if it has no
+-- patches / cannot be read. Shared by the thread-require preamble below.
+local function patched_source_for(path)
+  local target = normalize_path(path)
+  local patches = state.patches_by_target and state.patches_by_target[target]
+  if not patches then return nil end
+  local source = state.fs and state.fs.read(path)
+  if not source then return nil end
+  local ok, patched = pcall(engine.apply, target, source, patches, { vars = state.vars })
+  if not ok or type(patched) ~= "string" then return nil end
+  if not raw_loadstring(patched, "@" .. path) then
+    patched = engine.apply_safe(target, source, patches, { vars = state.vars },
+                                function(s) return (raw_loadstring(s)) end)
+  end
+  return patched
+end
+
+-- A LÖVE thread runs in a FRESH Lua state with no MLI hooks, so a `require "x"`
+-- inside it loads the UNPATCHED x from disk. This matters most for the save
+-- thread, which requires engine/string_packer: without the patched packer it
+-- serializes saves with the vanilla one, dropping Amulet's big-number handling
+-- and corrupting big-number saves (they reload as inert tables and crash on the
+-- next arithmetic). We scan a thread's source for require()s of files MLI
+-- patches and prepend package.preload entries holding the PATCHED source --
+-- package.preload is require's first searcher, so it wins over the on-disk
+-- original. Recurses so a patched file's own patched requires are covered too.
+local function thread_require_preamble(source, seen)
+  seen = seen or {}
+  local parts = {}
+  for name in source:gmatch("require%s*%(?%s*['\"]([^'\"]+)['\"]") do
+    if not seen[name] then
+      seen[name] = true
+      if not name:match("^love%.") then          -- love.* is always present
+        local path = name:match("%.lua$") and name or (name .. ".lua")
+        local psrc = patched_source_for(path)
+        if psrc then
+          parts[#parts + 1] = thread_require_preamble(psrc, seen)   -- transitive
+          parts[#parts + 1] = ("package.preload[%q] = function(...)\n%s\nend\n"):format(name, psrc)
+          log.info("thread preload: serving patched %s to a thread's require", name)
+        end
+      end
+    end
+  end
+  return table.concat(parts)
 end
 
 -- ---- dumping -------------------------------------------------------------
@@ -511,6 +557,10 @@ function injector.init(opts)
                                   function(s) return (raw_loadstring(s)) end)
     end
     patched = rewrite_thread_creators(patched)   -- in case the thread spawns threads
+    -- Preload patched copies of any files this thread require()s (e.g. the save
+    -- thread's engine/string_packer), so its fresh state doesn't load originals.
+    local preamble = thread_require_preamble(patched)
+    if preamble ~= "" then patched = preamble .. patched end
     log.info("thread chunk: serving patched %s (%d patches)", target, #patches)
     if love and love.filesystem and love.filesystem.newFileData then
       local ok2, fd = pcall(love.filesystem.newFileData, patched, path)

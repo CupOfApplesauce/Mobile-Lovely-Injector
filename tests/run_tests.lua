@@ -409,6 +409,10 @@ return G
   -- a LÖVE-thread worker (loaded in its own state) + a host that spawns it.
   ["engine/worker.lua"] = "WORKER_FLAG = false\nreturn true\n",
   ["engine/threadhost.lua"] = "T = love.thread.newThread('engine/worker.lua')\nreturn true\n",
+  -- a thread entrypoint that require()s a PATCHED lib (mirrors the save thread
+  -- requiring engine/string_packer). Its fresh state must get the patched lib.
+  ["engine/packerlike.lua"] = "PACKER_PATCHED = false\nreturn true\n",
+  ["engine/savelike.lua"] = 'require "engine/packerlike"\nSAVELIKE_FLAG = false\nreturn true\n',
   -- a mod with a pattern patch (game.lua), a copy patch (main.lua),
   -- and a module patch
   ["Mods/TestMod/lovely.toml"] = [==[
@@ -456,6 +460,20 @@ target = "engine/threadhost.lua"
 pattern = "T = love.thread.newThread('engine/worker.lua')"
 position = "at"
 payload = "T = love.thread.newThread('engine/worker.lua')"
+
+[[patches]]
+[patches.pattern]
+target = "engine/packerlike.lua"
+pattern = "PACKER_PATCHED = false"
+position = "at"
+payload = "PACKER_PATCHED = true"
+
+[[patches]]
+[patches.pattern]
+target = "engine/savelike.lua"
+pattern = "SAVELIKE_FLAG = false"
+position = "at"
+payload = "SAVELIKE_FLAG = true"
 ]==],
   ["Mods/TestMod/modules/greet.lua"] = [[return "hello-from-module"]],
 }
@@ -705,6 +723,27 @@ do
     local host = MLI_thread_chunk("engine/threadhost.lua")
     check("newThread(path) rewritten to load patched code",
       type(host) == "string" and host:find("MLI_thread_chunk(", 1, true) ~= nil, tostring(host))
+
+    -- A thread's require() runs in a fresh state with no MLI hooks, so the
+    -- served chunk must preload the PATCHED source of any patched file it
+    -- requires (this is the save-thread/engine/string_packer fix).
+    local saver = MLI_thread_chunk("engine/savelike.lua")
+    check("thread chunk preloads patched required lib",
+      type(saver) == "string"
+      and saver:find('package.preload["engine/packerlike"]', 1, true) ~= nil
+      and saver:find("PACKER_PATCHED = true", 1, true) ~= nil, tostring(saver))
+    -- functional: executing the served chunk makes require resolve to patched.
+    do
+      local saved_preload = package.preload["engine/packerlike"]
+      package.preload["engine/packerlike"] = nil
+      _G.PACKER_PATCHED, _G.SAVELIKE_FLAG = nil, nil
+      local fn = (loadstring or load)(saver)
+      if fn then pcall(fn) end
+      check("thread require() resolves to patched source at runtime",
+        _G.PACKER_PATCHED == true and _G.SAVELIKE_FLAG == true)
+      package.preload["engine/packerlike"] = saved_preload
+      _G.PACKER_PATCHED, _G.SAVELIKE_FLAG = nil, nil
+    end
   end
 
   -- run() loads original main, applies main.lua patch (copy append), executes

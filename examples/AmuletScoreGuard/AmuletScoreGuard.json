@@ -1,0 +1,13 @@
+{
+  "id": "AmuletScoreGuard",
+  "name": "Amulet Score Guard",
+  "display_name": "Amulet Score Guard",
+  "author": ["CupOfApplesauce"],
+  "description": "Safety net for a rare Amulet big-number edge case: a table-form value reaching math.floor in check_and_set_high_score can crash (and brick a save) when continuing a Cryptid ascension run. Skips the cosmetic high-score update instead of crashing. Transparent no-op without Amulet.",
+  "prefix": "asg",
+  "main_file": "main.lua",
+  "priority": 100,
+  "badge_colour": "8E44AD",
+  "badge_text_colour": "FFFFFF",
+  "version": "1.0.0"
+}
